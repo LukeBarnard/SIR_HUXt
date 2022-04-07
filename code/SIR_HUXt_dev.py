@@ -11,8 +11,9 @@ import pandas as pd
 import sunpy.coordinates.sun as sn
 import scipy.stats as st
 # Local packages
-import HUXt as H
-
+import huxt as H
+import huxt_inputs as Hin
+import huxt_analysis as Ha
 
 def setup_huxt(start_time, uniform_wind=True):
     """
@@ -25,13 +26,14 @@ def setup_huxt(start_time, uniform_wind=True):
     cr_num = np.fix(sn.carrington_rotation_number(start_time))
     ert = H.Observer('EARTH', start_time)
 
-    # Set up HUXt for a 5 day simulation with homogenous inner boundary.
-    vr_in, br_in = H.Hin.get_MAS_long_profile(cr_num, ert.lat.to(u.deg))
+    # Set up HUXt for a 5 day simulation of this CR
+    vr_in = Hin.get_MAS_long_profile(cr_num, ert.lat.to(u.deg))
+    # Set wind to be uniform?
     if uniform_wind:
         vr_in = np.zeros(vr_in.shape) + 400*vr_in.unit
         
     model = H.HUXt(v_boundary=vr_in, cr_num=cr_num, cr_lon_init=ert.lon_c, latitude=ert.lat.to(u.deg),
-                   br_boundary=br_in, lon_start=270*u.deg, lon_stop=90*u.deg, simtime=3.5*u.day, dt_scale=4)
+                   lon_start=270*u.deg, lon_stop=90*u.deg, simtime=3.5*u.day, dt_scale=4)
     
     return model
 
