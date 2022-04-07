@@ -1,0 +1,1 @@
+slurmstepd: error: *** JOB 1527756 ON compute-6-6 CANCELLED AT 2021-01-24T10:09:41 DUE TO TIME LIMIT ***

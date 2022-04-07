@@ -498,25 +498,22 @@ def run_experiment():
 
     # Set up HUXt with Uniform wind. 
     start_time = Time('2008-06-10T00:00:00')
-    model = setup_huxt(start_time, uniform_wind=True)
+    model = setup_huxt(start_time, uniform_wind=False)
 
     # Initialise Earth directed CME. Coords in HEEQ, so need Earth Lat.
     ert = model.get_observer('EARTH')
     avg_ert_lat = np.mean(ert.lat.to(u.deg).value)
     cme_base = get_base_cme(v=1000, lon=0, lat=avg_ert_lat, width=35, thickness=1.1)
 
-    n_truths = 50
+    n_truths = 60
     n_members = 50
     observer_lon = -60*u.deg  # approx L5 location
 
-    out_filepath = 'SIR_HUXt_uniform_multi_truths_racc.hdf5'
+    out_filepath = 'SIR_HUXt_struc_multi_truths_racc.hdf5'
     out_file = h5py.File(out_filepath, 'w')
 
     for ttt in range(n_truths):
-        
-        if ttt == 1:
-            break
-            
+                    
         truth_key = "truth_{:02d}".format(ttt)
         truth_group = out_file.create_group(truth_key)
         print("{} - {}".format(truth_key, pd.datetime.now().time()))
@@ -630,7 +627,151 @@ def run_experiment():
                 break
 
     out_file.close()
+    return
+
+
+def run_experiment_random_background():
+    np.random.seed(20100114)
+
+    # Set up HUXt with Uniform wind. 
+    start_time = Time('2008-06-10T00:00:00')
+    end_time = Time('2013-01-05T00:00:00')
+
+    n_truths = 100
+    n_members = 50
+    observer_lon = -60*u.deg  # approx L5 location
+
+    out_filename = 'SIR_HUXt_multi_truth_randbck_racc.hdf5'
+    out_file = h5py.File(out_filename, 'w')
+    out_file.create_dataset('n_truths', data=n_truths)
+
+    for ttt in range(n_truths):
+        
+        initial_time = np.random.uniform(start_time.jd, end_time.jd)
+        initial_time = Time(initial_time, format='jd')
+        initial_time = Time(initial_time.isot, format='isot') # Why do i need to do this?
+        model = setup_huxt(initial_time, uniform_wind=False)
+
+        # Initialise Earth directed CME. Coords in HEEQ, so need Earth Lat.
+        ert = model.get_observer('EARTH')
+        avg_ert_lat = np.mean(ert.lat.to(u.deg).value)
+        cme_base = get_base_cme(v=1000, lon=0, lat=avg_ert_lat, width=35, thickness=1.1)
+
+        truth_key = "truth_{:02d}".format(ttt)
+        truth_group = out_file.create_group(truth_key)
+
+        # Perturb the base CME to get a "Truth" CME, and solve
+        cme_truth = perturb_cone_cme(cme_base)
+        model.solve([cme_truth])
+        cme_truth = model.cmes[0]
+
+        # Setup an observer at ~L5.
+        observer = Observer(model, observer_lon, el_min=10.0, el_max=40.0)
+        cme_truth_obs = observer.compute_synthetic_obs(el_spread=0.01, cadence=5, el_min=observer.el_min,
+                                                       el_max=observer.el_max)
+
+        # Animate the truth run
+        # animate_observer(model, observer, truth_key, add_flank=True, add_fov=True)
+
+        # Save the truth CME parameters and osbervations
+        truth_group.create_dataset('arrival_true', data=cme_truth.earth_arrival_time.jd)
+        truth_group.create_dataset('v_true', data=cme_truth.v.value)
+        truth_group.create_dataset('lon_true', data=cme_truth.longitude.to(u.deg).value)
+        truth_group.create_dataset('lat_true', data=cme_truth.latitude.to(u.deg).value)
+        truth_group.create_dataset('width_true', data=cme_truth.width.to(u.deg).value)
+        truth_group.create_dataset('thickness_true', data=cme_truth.thickness.to(u.solRad).value)
+        truth_group.create_dataset('model_flank_true', data=observer.model_flank.values)
+        truth_group.create_dataset('observed_flank', data=cme_truth_obs.values)
+        truth_group.create_dataset('n_members', data=n_members)
+        truth_group.create_dataset('observer_lon', data=observer_lon.value)
+
+        # Loop through the observations.
+        first_pass_flag = True
+        for i, row in cme_truth_obs.iterrows():
+
+            analysis_key = "analysis_{:02d}".format(i)
+            analysis_group = truth_group.create_group(analysis_key)
+
+            t_obs = row['time']
+            e_obs = row['el']
+
+            analysis_group.create_dataset('t_obs', data=t_obs)
+            analysis_group.create_dataset('e_obs', data=e_obs)
+
+            speeds = np.zeros(n_members)
+            arrivals = np.zeros(n_members)
+            lons = np.zeros(n_members)
+            lats = np.zeros(n_members)
+            widths = np.zeros(n_members)
+            thicks = np.zeros(n_members)
+            likelihood = np.zeros(n_members)
+
+            for j in range(n_members):
+
+                # Perturb the CME, solve, and get the observer data.
+                if first_pass_flag:
+                    cme_ens = perturb_cone_cme(cme_base)
+                else:
+                    cme_ens = updated_cmes[j]
+
+                model.solve([cme_ens])
+                cme_ens = model.cmes[0]
+                ens_observer = Observer(model, observer_lon, el_min=4.0, el_max=40.0)
+
+                # Collect all the ensemble elongation profiles together. 
+                if j == 0: 
+                    ens_profiles = ens_observer.model_flank.copy()
+                    ens_profiles.drop(columns=['r', 'lon'], inplace=True)
+                    ens_profiles.rename(columns={'el': 'e_{:02d}'.format(j)}, inplace=True)
+                else:
+                    ens_profiles['e_{:02d}'.format(j)] = ens_observer.model_flank['el'].copy()
+
+                # Compute the likelihood of the observation given the members profile
+                profile = ens_observer.model_flank.copy()
+                # Find closest time - there should be an exact match, but this is safer
+                # TODO - add check that closest value isn't too far away?
+                id_obs = np.argmin(np.abs(profile['time'].values - t_obs))
+                e_mod = profile.loc[id_obs, 'el']
+                # Use Gaussian likelihood
+                likelihood[j] = st.norm.pdf(e_obs, loc=e_mod, scale=0.2)
+
+                # Save this members CME data
+                speeds[j] = cme_ens.v.value
+                lons[j] = cme_ens.longitude.to(u.deg).value
+                lats[j] = cme_ens.latitude.to(u.deg).value
+                widths[j] = cme_ens.width.to(u.deg).value
+                thicks[j] = cme_ens.thickness.to(u.solRad).value
+                arrivals[j] = cme_ens.earth_arrival_time.jd
+
+            first_pass_flag = False
+
+            weights = likelihood / np.nansum(likelihood)
+
+            analysis_group.create_dataset('speeds', data=speeds)
+            analysis_group.create_dataset('lons', data=lons)
+            analysis_group.create_dataset('lats', data=lats)
+            analysis_group.create_dataset('widths', data=widths)
+            analysis_group.create_dataset('thicks', data=thicks)
+            analysis_group.create_dataset('arrivals', data=arrivals)
+            analysis_group.create_dataset('likelihood', data=likelihood)
+            analysis_group.create_dataset('weights', data=weights)
+            analysis_group.create_dataset('ens_profiles', data=ens_profiles)
+            keys = ens_profiles.columns.to_list()
+            col_names = "    ".join(keys)
+            analysis_group.create_dataset('ens_profiles_keys', data=col_names)
+
+            out_file.flush()
+
+            # Get resampled CMEs for next iteration
+            updated_cmes = compute_resampling(speeds, lons, lats, widths, thicks, weights)
+
+            if i == 8:
+                break
+
+    out_file.close()
+    return
 
 
 if __name__ == "__main__":
-    run_experiment()
+    #run_experiment()
+    run_experiment_random_background()	

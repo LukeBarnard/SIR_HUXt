@@ -1,7 +1,7 @@
-root,C:\Users\yq904481\research\repos\SIR_HUXt
-boundary_conditions,data\boundary_conditions
-ephemeris,data\ephemeris\ephemeris.hdf5
-HUXt_data,data\HUXt
-out_data,data\out_data
-HUXt_figures,figures\HUXt_figures
+root,/home/users/yq904481/research/repos/SIR_HUXt
+boundary_conditions,data/boundary_conditions
+ephemeris,data/ephemeris/ephemeris.hdf5
+HUXt_data,data/HUXt
+out_data,data/out_data
+HUXt_figures,figures/HUXt_figures
 figures,figures
