@@ -500,18 +500,18 @@ def run_experiment():
 
     # Set up HUXt with Uniform wind. 
     start_time = Time('2008-06-10T00:00:00')
-    model = setup_huxt(start_time, uniform_wind=False)
+    model = setup_huxt(start_time, uniform_wind=True)
 
     # Initialise Earth directed CME. Coords in HEEQ, so need Earth Lat.
     ert = model.get_observer('EARTH')
     avg_ert_lat = np.mean(ert.lat.to(u.deg).value)
     cme_base = get_base_cme(v=1000, lon=0, lat=avg_ert_lat, width=35, thickness=1.1)
 
-    n_truths = 60
+    n_truths = 2
     n_members = 50
     observer_lon = -60*u.deg  # approx L5 location
 
-    out_filepath = 'SIR_HUXt_struc_multi_truths_racc.hdf5'
+    out_filepath = 'SIR_HUXt_uniform.hdf5'
     out_file = h5py.File(out_filepath, 'w')
 
     for ttt in range(n_truths):
@@ -534,7 +534,8 @@ def run_experiment():
         # animate_observer(model, observer, truth_key, add_flank=True, add_fov=True)
 
         # Save the truth CME parameters and osbervations
-        truth_group.create_dataset('arrival_true', data=cme_truth.earth_arrival_time.jd)
+        hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
+        truth_group.create_dataset('arrival_true', data=t_arrive.jd)
         truth_group.create_dataset('v_true', data=cme_truth.v.value)
         truth_group.create_dataset('lon_true', data=cme_truth.longitude.to(u.deg).value)
         truth_group.create_dataset('lat_true', data=cme_truth.latitude.to(u.deg).value)
@@ -601,7 +602,8 @@ def run_experiment():
                 lats[j] = cme_ens.latitude.to(u.deg).value
                 widths[j] = cme_ens.width.to(u.deg).value
                 thicks[j] = cme_ens.thickness.to(u.solRad).value
-                arrivals[j] = cme_ens.earth_arrival_time.jd
+                hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
+                arrivals[j] = t_arrive.jd
 
             first_pass_flag = False
 
@@ -775,5 +777,5 @@ def run_experiment_random_background():
 
 
 if __name__ == "__main__":
-    #run_experiment()
-    run_experiment_random_background()	
+    run_experiment()
+    #run_experiment_random_background()
