@@ -646,47 +646,39 @@ class HUXt:
         # ======================================================================
         # If the input time series has not been prescribed,
         # Generate it from v(long)
-        if hasattr(self, 'input_v_ts'):
+        #if hasattr(self, 'input_v_ts'):
             #print('Using prescribed input V time series')
-            make_ts = False
-        else:
-            print('Generating V time series from prescribed v(long)')
-            self.ts_from_vlong()           
+        #    make_ts = False
+        #else:
+            #print('Generating V time series from prescribed v(long)')
+        #    self.ts_from_vlong()
+        self.ts_from_vlong()
         
         # ======================================================================
         # Add CMEs
         # ======================================================================
         # See if the cmes-flag input time series has been prescribed
-        if hasattr(self, 'input_iscme_ts'):
-            #print('Using prescribed input CME-flag time series')
-            n_cme = np.nanmax(self.input_iscme_ts)
-            # Create dummy CME list to sort the boundaries
-            self.cmes = []
-            for n in range(0,n_cme):
-                cme = ConeCME(t_launch=0*u.s, longitude=0*u.deg, 
-                              width=0*u.deg, v=0*self.kms, thickness=0*u.solRad)
-                self.cmes.append(cme)
-        else:
-            #print('Adding CMEs to input time series ')  
-            self.input_iscme_ts = 0 * np.ones((self.model_time.size,
-                                               self.nlon), dtype='int')
-            
-            n_cme = len(self.cmes)
-            # Loop through model longitudes and add the CMEs
-            for i in range(self.lon.size):
-                if self.lon.size == 1:
-                    lon_out = self.lon.value
-                else:
-                    lon_out = self.lon[i].value
-     
-                # Add the CMEs to the input series
-                v, isincme = add_cmes_to_input_series(self.input_v_ts[:,i], 
-                                                      self.model_time, lon_out, 
-                                                      self.r[0].to('km').value, cme_params, 
-                                                      self.latitude.value)
-                self.input_v_ts[:,i] = v
-                self.input_iscme_ts[:,i] = isincme
-        
+
+        #print('Adding CMEs to input time series ')  
+        self.input_iscme_ts = 0 * np.ones((self.model_time.size,
+                                           self.nlon), dtype='int')
+
+        n_cme = len(self.cmes)
+        # Loop through model longitudes and add the CMEs
+        for i in range(self.lon.size):
+            if self.lon.size == 1:
+                lon_out = self.lon.value
+            else:
+                lon_out = self.lon[i].value
+
+            # Add the CMEs to the input series
+            v, isincme = add_cmes_to_input_series(self.input_v_ts[:,i], 
+                                                  self.model_time, lon_out, 
+                                                  self.r[0].to('km').value, cme_params, 
+                                                  self.latitude.value)
+            self.input_v_ts[:,i] = v
+            self.input_iscme_ts[:,i] = isincme
+
         # ======================================================================
         # Solve the time series at each longitude
         # ======================================================================

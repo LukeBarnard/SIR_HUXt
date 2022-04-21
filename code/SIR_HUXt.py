@@ -6,6 +6,7 @@ import os
 import pandas as pd
 import sunpy.coordinates.sun as sn
 import scipy.stats as st
+from sklearn.neighbors import KernelDensity
 # Local packages
 import huxt as H
 import huxt_inputs as Hin
@@ -175,20 +176,18 @@ def get_base_cme(v=1000, lon=0, lat=0, width=35, thickness=1):
 
 def perturb_cme(cme):
     """
-    Perturb a ConeCME's parameters according to each parameters perturbation function. 
+    Perturb a ConeCME's parameters according to each parameters perturbation function.
+    Current version only perturbs CME initial speed.
     :param cme: A ConeCME object
     :return cme_perturb: A ConeCME object with perturbed parameters
     """
 
-    lon_new = perturb_cme_longitude(cme.longitude)
-    lat_new = perturb_cme_latitude(cme.latitude)
-    width_new = perturb_cme_width(cme.width)
     v_new = perturb_cme_speed(cme.v)
     
     cme_perturb = H.ConeCME(t_launch=cme.t_launch,
-                            longitude=lon_new,
-                            latitude=lat_new,
-                            width=width_new,
+                            longitude=cme.longitude,
+                            latitude=cme.latitude,
+                            width=cme.width,
                             v=v_new,
                             thickness=cme.thickness)
     return cme_perturb
@@ -265,23 +264,24 @@ def open_SIR_output_file(tag):
     
     return out_file, out_filepath
 
-def initialise_cme_parameter_ensemble_arrays(n_ensemble)
+
+def initialise_cme_parameter_ensemble_arrays(n_ensemble):
     """
     Function to initialise empty arrays for storing the CME parameters for each ensemble member at each analysis step
     :param n_ensemble: The number of ensemble members in the SIR analysis
     :return:
     """
-    speeds = np.zeros(n_members)
-    withs = np.zeros(n_members)
-    lons = np.zeros(n_members)
-    lats = np.zeros(n_members)
-    thicks = np.zeros(n_members)
-    arrivals = np.zeros(n_members)
-    likelihood = np.zeros(n_members)
+    speeds = np.zeros(n_ensemble)
+    widths = np.zeros(n_ensemble)
+    lons = np.zeros(n_ensemble)
+    lats = np.zeros(n_ensemble)
+    thicks = np.zeros(n_ensemble)
+    arrivals = np.zeros(n_ensemble)
+    likelihood = np.zeros(n_ensemble)
     return speeds, widths, lons, lats, thicks, arrivals, likelihood
 
 
-def update_analysis_file_initial_values(file_handle, cme, observer_lon, observerd_cme):
+def update_analysis_file_initial_values(file_handle, cme, observations):
     """
     Function to output the modelled CME initial values and the CME observations to the SIR analysis file
     :param file_handle: The HDF5 file object of the analysis file.
@@ -291,9 +291,12 @@ def update_analysis_file_initial_values(file_handle, cme, observer_lon, observer
     """
     
     file_handle.create_dataset('cme_inital_values', data=cme.parameter_array())
-    file_handle.create_dataset('observer_lon', data=observer_lon.value)
-    file_handle.create_dataset('observed_cme', data=observed_cme)
-    keys = observed_cme.columns.to_list()
+    file_handle.create_dataset('t_arrive', data=observations['t_arrive'].jd)
+    file_handle.create_dataset('t_transit', data=observations['t_transit'].value)
+    file_handle.create_dataset('cme_params', data=observations['cme_params'])
+    file_handle.create_dataset('observer_lon', data=observations['observer_lon'].value)
+    file_handle.create_dataset('observed_cme', data=observations['observed_cme_flank'])
+    keys = observations['observed_cme_flank'].columns.to_list()
     col_names = "    ".join(keys)
     file_handle.create_dataset('observed_cme_keys', data=col_names)
     file_handle.flush()
@@ -326,7 +329,6 @@ def update_analysis_file_ensemble_members(analysis_group, speeds, widths, lons, 
     keys = ens_profiles.columns.to_list()
     col_names = "    ".join(keys)
     analysis_group.create_dataset('ens_profiles_keys', data=col_names)
-    out_file.flush()
     return
 
 
@@ -344,21 +346,72 @@ def compute_observation_likelihood(t_obs, e_obs, model_flank):
     # There should be an exact match, but this is safer
     id_obs = np.argmin(np.abs(model_flank['time'].values - t_obs))
     # Get modelled elongation at closest match
-    e_member = profile.loc[id_obs, 'el']
+    e_member = model_flank.loc[id_obs, 'el']
     # Compute likelihood of obs given modelled flank using Gaussian likelihood function
-    likelihood = st.norm.pdf(e_obs, loc=e_member, scale=0.2)
+    likelihood = st.norm.pdf(e_obs, loc=e_member, scale=0.3)
     
     return likelihood
 
     
+def compute_resampling(speeds, lons, lats, widths, thicks, weights):
+    """
+    Use gaussian kernel density estimation to generate new cme parameter values from the weighted distribution of
+    current values. Current version only resamples on CME speed.
+    :param speeds: Array of CME speeds of current ensemble members (in km/s)
+    :param lons: Array of CME longitudes of current ensemble members (in degs)
+    :param lats: Array of CME latitudes of current ensemble members (in degs)
+    :param widths: Array of CME widths of current ensemble members (in degs)
+    :param thicks: Array of CME thicknesses of current ensemble members (in solRad)
+    :param weights: Array of weights of the current ensemble members
+    :return resampled_cmes: A list of ConeCME objects initialised with the resampled CME parameters
+    """
     
-def SIR(model, cme, observed_cme, observer_lon):
+    n_members = speeds.size
+    
+    # Remove any particles with invalid weights
+    id_good = np.isfinite(weights)
+    weights = weights[id_good]
+    v = speeds[id_good]
+    
+    # Convert speeds to z-scores
+    v_av = np.mean(v)
+    v_std = np.std(v)
+    v_z = (v - v_av) / v_std 
+    
+    # Weighted Gaussian KDE
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.5).fit(v_z.reshape(-1,1), sample_weight=weights.ravel())
+    
+    # Get resampled particle speeds
+    v_z_resample = kde.sample(n_members)
+    # Invert z-scores to real space
+    v_resample = v_z_resample*v_std + v_av
+    
+    # Make new list of ConeCMEs from resampled parameters
+    resampled_cmes = []
+    
+    # Get launch time from base CME, as this is fixed
+    base_cme = get_base_cme()
+    t_launch = base_cme.t_launch
+    for i in range(n_members):
+        v_new = v_resample.ravel()[i]*(u.km/u.s)
+        lon = lons[i]*u.deg
+        lat = lats[i]*u.deg
+        width = widths[i]*u.deg
+        thickness = thicks[i]*u.solRad
+        conecme = H.ConeCME(t_launch=t_launch, longitude=lon, latitude=lat, width=width, v=v_new, thickness=thickness)
+        resampled_cmes.append(conecme)
+        
+    return resampled_cmes
+
+    
+def SIR(model, cme, observations, tag):
     """
     Function implementing the Sequential Importance Resampling of initial CME parameters in HUXt
     :param model: A HUXt instance.
     :param cme: A ConeCME instance representing the best guess inital CME parameter values.
-    :param observed_cme: A pandas dataframe of observations of the CME time elongation profile.
-    :param observer_lon: The longitude of the observer relative to Earth, in degrees.
+    :param observations: A dictionary containing the observed CME arrival time, transit time, observer longitude and a
+                         pandas data frame of the observed CME flank elongation.
+    :param tag: A string to append to output file name.
     """
     
     # Define constants of the SIR scheme.
@@ -366,14 +419,16 @@ def SIR(model, cme, observed_cme, observer_lon):
     n_analysis_steps = 8
     
     # Open file for storing SIR analysis
-    tag = 'test'
     out_file, out_filepath = open_SIR_output_file(tag)
     
+    observed_cme = observations['observed_cme_flank']
+    observer_lon = observations['observer_lon']
+    
     # Output the initial CME and observation data
-    update_analysis_file_initial_values(file_handle, cme, observer_lon, observerd_cme)
+    update_analysis_file_initial_values(out_file, cme, observations)
     
     # Generate the initial ensemble 
-    cme_ensemble = generate_ensemble(cme)
+    cme_ensemble = generate_cme_ensemble(cme, n_ens)    
     
     # Loop through the observations for each analysis step
     for i in range(n_analysis_steps):
@@ -399,7 +454,8 @@ def SIR(model, cme, observed_cme, observer_lon):
             # Run HUXt using this cme ensemble member
             model.solve([cme_ensemble[j]])
             
-            cme_member = model.cme_list[0]
+            cme_member = model.cmes[0]
+            
             
             # Update CME parameter arrays
             speeds[j] = cme_member.v.value
@@ -421,7 +477,7 @@ def SIR(model, cme, observed_cme, observer_lon):
                 ens_profiles.drop(columns=['r', 'lon'], inplace=True)
                 ens_profiles.rename(columns={'el': 'e_{:02d}'.format(j)}, inplace=True)
             else:
-                ens_profiles['e_{:02d}'.format(j)] = member_observer.model_flank['el'].copy()
+                ens_profiles['e_{:02d}'.format(j)] = member_obs.model_flank['el'].copy()
          
         # Compute particle weights from likelihoods
         weights = likelihood / np.nansum(likelihood)
@@ -430,74 +486,11 @@ def SIR(model, cme, observed_cme, observer_lon):
         update_analysis_file_ensemble_members(analysis_group, speeds, widths, lons, lats, thicks, arrivals, likelihood, weights, ens_profiles)
         
         # Resample the particles based on the current weights.
-
-    return
-
-
-def compute_resampling(speeds, lons, lats, widths, thicks, weights):
-    """
-    Use gaussian kernel density estimation to generate new cme parameter values from the weighted distribution of
-    current values
-    :param speeds: Array of CME speeds of current ensemble members (in km/s)
-    :param lons: Array of CME longitudes of current ensemble members (in degs)
-    :param lats: Array of CME latitudes of current ensemble members (in degs)
-    :param widths: Array of CME widths of current ensemble members (in degs)
-    :param thicks: Array of CME thicknesses of current ensemble members (in solRad)
-    :param weights: Array of weights of the current ensemble members
-    :return:
-    """
-    
-    n_members = speeds.size
-    
-    # Remove any bad values
-    id_good = np.isfinite(weights)
-    weights = weights[id_good]
-    speeds = speeds[id_good]
-    lons = lons[id_good]
-    lats = lats[id_good]
-    widths = widths[id_good]
-    thicks = thicks[id_good]
-
-    # Make sure longitudes are on -180:180 domain
-    lons[lons > 180] -= 360
-
-    params = {'speed': speeds,
-              'longitude': lons,
-              'latitude': lats,
-              'width': widths,
-              'thickness': thicks}
-    
-    samples = {'speed': np.zeros(n_members),
-               'longitude': np.zeros(n_members),
-               'latitude': np.zeros(n_members),
-               'width': np.zeros(n_members),
-               'thickness': np.zeros(n_members)}
-    
-    for i, (key, param) in enumerate(params.items()):
-
-        kde_pos = st.gaussian_kde(param, bw_method=0.175, weights=weights)
-
-        # Resample from posterior for new members.
-        new_sample = kde_pos.resample(size=n_members)
-        if key == 'thickness':
-            # Stop negative thickness
-            new_sample[new_sample < 0] = 0.1
-                
-        samples[key] = new_sample.squeeze()    
-            
-    # now make a list of cone cme objects using the resampled points. 
-    updated_cmes = []
-    for i in range(n_members):
-        v = samples['speed'][i]*(u.km/u.s)
-        lon = samples['longitude'][i]*u.deg
-        lat = samples['latitude'][i]*u.deg
-        width = samples['width'][i]*u.deg
-        thickness = samples['thickness'][i]*u.solRad
-        t_launch = (1*u.hr).to(u.s)  # same as the base_cme function
-        conecme = H.ConeCME(t_launch=t_launch, longitude=lon, latitude=lat, width=width, v=v, thickness=thickness)
-        updated_cmes.append(conecme)
+        cme_ensemble = compute_resampling(speeds, lons, lats, widths, thicks, weights)
         
-    return updated_cmes
-
-    
-
+        # Push data to the file
+        out_file.flush()
+        
+    out_file.close()
+        
+    return
