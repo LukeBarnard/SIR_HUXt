@@ -259,7 +259,7 @@ def open_SIR_output_file(tag):
     :return out_file: The file object for controlling data I/O.
     :return out_filepath: String path of the output file
     """
-    out_filepath = 'C:\\Users\\yq904481\\research\\repos\\SIR_HUXt\\data\\out_data\\SIR_HUXt_{}.hdf5'.format(tag)
+    out_filepath = '/home/users/yq904481/research/repos/SIR_HUXt/data/out_data/SIR_HUXt_{}.hdf5'.format(tag)
     out_file = h5py.File(out_filepath, 'w')
     
     return out_file, out_filepath
@@ -348,7 +348,7 @@ def compute_observation_likelihood(t_obs, e_obs, model_flank):
     # Get modelled elongation at closest match
     e_member = model_flank.loc[id_obs, 'el']
     # Compute likelihood of obs given modelled flank using Gaussian likelihood function
-    likelihood = st.norm.pdf(e_obs, loc=e_member, scale=0.3)
+    likelihood = st.norm.pdf(e_obs, loc=e_member, scale=0.25)
     
     return likelihood
 
@@ -404,18 +404,18 @@ def compute_resampling(speeds, lons, lats, widths, thicks, weights):
     return resampled_cmes
 
     
-def SIR(model, cme, observations, tag):
+def SIR(model, cme, observations, n_ens, tag):
     """
     Function implementing the Sequential Importance Resampling of initial CME parameters in HUXt
     :param model: A HUXt instance.
     :param cme: A ConeCME instance representing the best guess inital CME parameter values.
     :param observations: A dictionary containing the observed CME arrival time, transit time, observer longitude and a
                          pandas data frame of the observed CME flank elongation.
+    :param n_ens: The number of ensemble members.
     :param tag: A string to append to output file name.
     """
     
     # Define constants of the SIR scheme.
-    n_ens = 20
     n_analysis_steps = 8
     
     # Open file for storing SIR analysis
