@@ -1,4 +1,0 @@
-  File "sir_huxt_calibration.py", line 25
-    np.random.seed(19630802)
-    ^
-IndentationError: unexpected indent
