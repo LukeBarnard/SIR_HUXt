@@ -153,7 +153,7 @@ def setup_huxt(start_time, uniform_wind=True):
         vr_in = np.zeros(vr_in.shape) + 400*vr_in.unit
         
     model = H.HUXt(v_boundary=vr_in, cr_num=cr_num, cr_lon_init=ert.lon_c, latitude=ert.lat.to(u.deg),
-                   lon_start=270*u.deg, lon_stop=90*u.deg, simtime=3.5*u.day, dt_scale=4)
+                   lon_start=300*u.deg, lon_stop=60*u.deg, simtime=3.5*u.day, dt_scale=4)
     
     return model
 
