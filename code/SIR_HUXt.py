@@ -348,7 +348,7 @@ def compute_observation_likelihood(t_obs, e_obs, model_flank):
     # Get modelled elongation at closest match
     e_member = model_flank.loc[id_obs, 'el']
     # Compute likelihood of obs given modelled flank using Gaussian likelihood function
-    likelihood = st.norm.pdf(e_obs, loc=e_member, scale=0.25)
+    likelihood = st.norm.pdf(e_obs, loc=e_member, scale=0.2)
     
     return likelihood
 

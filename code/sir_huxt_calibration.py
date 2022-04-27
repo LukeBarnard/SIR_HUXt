@@ -51,7 +51,7 @@ def experiment_uniform_wind_low_obs_error():
         observations = {'t_arrive':t_arrive, 't_transit':t_transit, 'observer_lon':observer_lon,
                         'observed_cme_flank':observed_cme_flank, 'cme_params':cme_truth.parameter_array()}
     
-        tag = "uniform_low_error_n{:03d}_run_{:03d}".format(n_ens, i)
+        tag = "uniform_low_error_n{:03d}_lowerllhd_run_{:03d}".format(n_ens, i)
         sir.SIR(model, cme_guess, observations, n_ens, tag)
       
         
