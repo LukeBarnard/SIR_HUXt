@@ -28,10 +28,9 @@ def experiment_uniform_wind_low_obs_error():
     
     # Generate a "truth" CME
     base_cme = sir.get_base_cme()
-    cme_truth = sir.perturb_cme(base_cme)
     
     # Get HUXt solution of this truth CME, and observations from L5
-    model.solve([cme_truth])
+    model.solve([base_cme])
     cme_truth = model.cmes[0]
     hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
     
@@ -44,7 +43,7 @@ def experiment_uniform_wind_low_obs_error():
     for i in range(n_runs):
     
         # Make a guess at the CME initial values 
-        cme_guess = sir.perturb_cme(cme_truth)
+        cme_guess = sir.perturb_cme(base_cme)
         
         # Low observational error
         observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=3, el_min=4.0, el_max=30.0)
@@ -108,6 +107,6 @@ def experiment_real_wind_low_obs_error():
 if __name__ == "__main__":
     
     experiment_uniform_wind_low_obs_error()
-    experiment_real_wind_low_obs_error()
+    #experiment_real_wind_low_obs_error()
     
     
