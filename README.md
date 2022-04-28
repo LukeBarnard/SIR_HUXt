@@ -3,7 +3,7 @@
 ## Introduction
 SIR HUXt integrates Sequential Importance Resampling (a class of Particle Filter Data Assimilation) into the HUXt solar wind model.
 
-This is used to show how synthetic observations of the CME flank elongation can be used to constrain the modelled CME evolution.
+We develop a set of Observing System Simulation Experiments to study the effectiveness of assimilating the observed CME flank elongation into HUXt to better constrain the evolution of a CME.
 
 ## Installation
 This project is written in Python 3.7.3
