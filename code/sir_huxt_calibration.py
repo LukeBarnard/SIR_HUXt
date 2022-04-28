@@ -65,18 +65,17 @@ def experiment_real_wind_low_obs_error():
     """
 
     # Test the SIR scheme
-    np.random.seed(19851013)
+    np.random.seed(19661025)
     
-    start_time = Time('2008-06-01T00:00:00')
+    start_time = Time('2008-06-30T00:00:00')
     
     model = sir.setup_huxt(start_time, uniform_wind=False)
     
     # Generate a "truth" CME
     base_cme = sir.get_base_cme()
-    cme_truth = sir.perturb_cme(base_cme)
     
     # Get HUXt solution of this truth CME, and observations from L5
-    model.solve([cme_truth])
+    model.solve([base_cme])
     cme_truth = model.cmes[0]
     hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
     
@@ -89,7 +88,7 @@ def experiment_real_wind_low_obs_error():
     for i in range(n_runs):
     
         # Make a guess at the CME initial values 
-        cme_guess = sir.perturb_cme(cme_truth)
+        cme_guess = sir.perturb_cme(base_cme)
         
         # Low observational error
         observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=3, el_min=4.0, el_max=30.0)
@@ -97,16 +96,16 @@ def experiment_real_wind_low_obs_error():
         observations = {'t_arrive':t_arrive, 't_transit':t_transit, 'observer_lon':observer_lon,
                         'observed_cme_flank':observed_cme_flank, 'cme_params':cme_truth.parameter_array()}
     
-        tag = "real_low_error_n{:03d}_run_{:03d}".format(n_ens, i)
+        tag = "real_low_error_n{:03d}_lowerllhd_lowerrsmp_run_{:03d}".format(n_ens, i)
         sir.SIR(model, cme_guess, observations, n_ens, tag)
-        
+            
         
     return
 
     
 if __name__ == "__main__":
     
-    experiment_uniform_wind_low_obs_error()
-    #experiment_real_wind_low_obs_error()
+    #experiment_uniform_wind_low_obs_error()
+    experiment_real_wind_low_obs_error()
     
     
