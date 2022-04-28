@@ -379,7 +379,7 @@ def compute_resampling(speeds, lons, lats, widths, thicks, weights):
     v_z = (v - v_av) / v_std 
     
     # Weighted Gaussian KDE
-    kde = KernelDensity(kernel='gaussian', bandwidth=0.5).fit(v_z.reshape(-1,1), sample_weight=weights.ravel())
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.25).fit(v_z.reshape(-1,1), sample_weight=weights.ravel())
     
     # Get resampled particle speeds
     v_z_resample = kde.sample(n_members)
