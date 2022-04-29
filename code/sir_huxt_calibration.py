@@ -67,26 +67,29 @@ def experiment_real_wind_low_obs_error():
     # Test the SIR scheme
     np.random.seed(19661025)
     
-    start_time = Time('2008-06-30T00:00:00')
-    
-    model = sir.setup_huxt(start_time, uniform_wind=False)
-    
-    # Generate a "truth" CME
-    base_cme = sir.get_base_cme()
-    
-    # Get HUXt solution of this truth CME, and observations from L5
-    model.solve([base_cme])
-    cme_truth = model.cmes[0]
-    hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
-    
-    observer_lon = -60*u.deg
-    L5Obs = sir.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=30.0)
-    
-    # Run the SIR scheme on this event many times to see how the performance is
     n_ens = 20
     n_runs = 100
-    for i in range(n_runs):
     
+    # Get range of times to initialise CMEs with
+    t_start = Time('2007-01-01T00:00:00')
+    t_stop = Time('2011-01-01T00:00:00')
+    start_jd = np.linspace(t_start.jd, t_stop.jd, n_runs)
+    t_init = Time(start_jd, format='jd')
+    
+    for i in range(n_runs):
+
+        model = sir.setup_huxt(t_init[i], uniform_wind=False)
+        # Generate a "truth" CME
+        base_cme = sir.get_base_cme()
+        
+        # Get HUXt solution of this truth CME, and observations from L5
+        model.solve([base_cme])
+        cme_truth = model.cmes[0]
+        hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
+        
+        observer_lon = -60*u.deg
+        L5Obs = sir.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=30.0)
+        
         # Make a guess at the CME initial values 
         cme_guess = sir.perturb_cme(base_cme)
         
@@ -96,7 +99,7 @@ def experiment_real_wind_low_obs_error():
         observations = {'t_arrive':t_arrive, 't_transit':t_transit, 'observer_lon':observer_lon,
                         'observed_cme_flank':observed_cme_flank, 'cme_params':cme_truth.parameter_array()}
     
-        tag = "real_low_error_n{:03d}_lowerllhd_lowerrsmp_run_{:03d}".format(n_ens, i)
+        tag = "real_random_t_init_run_{:03d}".format(i)
         sir.SIR(model, cme_guess, observations, n_ens, tag)
             
         
