@@ -14,7 +14,7 @@ from sklearn.neighbors import KernelDensity
 from astropy.time import Time
 
 
-def experiment_uniform_wind_low_obs_error():
+def experiment_uniform_wind_multi_param():
     """
     Run the SIR scheme repeatedly for guesses at one truth CME and different realisations of noise added to the observations.
     Use a uniform solar wind background.
@@ -108,7 +108,7 @@ def experiment_real_wind_low_obs_error():
     
 if __name__ == "__main__":
     
-    #experiment_uniform_wind_low_obs_error()
-    experiment_real_wind_low_obs_error()
+    experiment_uniform_wind_multi_param()
+    #experiment_real_wind_low_obs_error()
     
     

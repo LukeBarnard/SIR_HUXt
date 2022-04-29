@@ -153,7 +153,7 @@ def setup_huxt(start_time, uniform_wind=True):
         vr_in = np.zeros(vr_in.shape) + 400*vr_in.unit
         
     model = H.HUXt(v_boundary=vr_in, cr_num=cr_num, cr_lon_init=ert.lon_c, latitude=ert.lat.to(u.deg),
-                   lon_start=300*u.deg, lon_stop=60*u.deg, simtime=3.5*u.day, dt_scale=4)
+                   lon_start=290*u.deg, lon_stop=70*u.deg, simtime=3.5*u.day, dt_scale=4)
     
     return model
 
@@ -183,11 +183,14 @@ def perturb_cme(cme):
     """
 
     v_new = perturb_cme_speed(cme.v)
+    w_new = perturb_cme_width(cme.width)
+    lon_new = perturb_cme_longitude(cme.longitude)
+    lat_new = perturb_cme_latitude(cme.latitude)
     
     cme_perturb = H.ConeCME(t_launch=cme.t_launch,
-                            longitude=cme.longitude,
-                            latitude=cme.latitude,
-                            width=cme.width,
+                            longitude=lon_new,
+                            latitude=lat_new,
+                            width=w_new,
                             v=v_new,
                             thickness=cme.thickness)
     return cme_perturb
@@ -199,7 +202,7 @@ def perturb_cme_longitude(lon):
     :param lon: CME source longitude in degrees.
     :return lon_out: Perturbed CME source longitude in degrees.
     """
-    lon_spread = 10*u.deg
+    lon_spread = 5*u.deg
     lon_out = lon + np.random.uniform(-1,1,1)*lon_spread
     return lon_out[0]
 
@@ -210,7 +213,7 @@ def perturb_cme_latitude(lat):
     :param lat: CME source latitude in degrees.
     :return lat_out: Perturbed CME source latitude in degrees.
     """
-    lat_spread = 10*u.deg
+    lat_spread = 5*u.deg
     lat_out = lat + np.random.uniform(-1,1,1)*lat_spread
     return lat_out[0]
 
@@ -232,7 +235,7 @@ def perturb_cme_width(width):
     :param width: CME angular width in degrees.
     :return width_out: Perturbed CME angular width in degrees.
     """
-    width_spread = 10*u.deg
+    width_spread = 5*u.deg
     width_out = width + np.random.uniform(-1,1,1)*width_spread
     return width_out[0]
 
@@ -269,16 +272,12 @@ def initialise_cme_parameter_ensemble_arrays(n_ensemble):
     """
     Function to initialise empty arrays for storing the CME parameters for each ensemble member at each analysis step
     :param n_ensemble: The number of ensemble members in the SIR analysis
-    :return:
+    :return parameter_arrays: A dictionary of parameter keys and an empty array for storing each ensemble member value
     """
-    speeds = np.zeros(n_ensemble)
-    widths = np.zeros(n_ensemble)
-    lons = np.zeros(n_ensemble)
-    lats = np.zeros(n_ensemble)
-    thicks = np.zeros(n_ensemble)
-    arrivals = np.zeros(n_ensemble)
-    likelihood = np.zeros(n_ensemble)
-    return speeds, widths, lons, lats, thicks, arrivals, likelihood
+    keys = ['t_init', 'speed', 'width', 'lon', 'lat', 'thick', 'arrival', 'likelihood', 'weight']
+    parameter_arrays = {k:np.zeros(n_ensemble) for k in keys}
+    parameter_arrays['n_members'] = n_ensemble
+    return parameter_arrays
 
 
 def update_analysis_file_initial_values(file_handle, cme, observations):
@@ -303,28 +302,22 @@ def update_analysis_file_initial_values(file_handle, cme, observations):
     return
 
 
-def update_analysis_file_ensemble_members(analysis_group, speeds, widths, lons, lats, thicks, arrivals, likelihood, weights, ens_profiles):
+def update_analysis_file_ensemble_members(analysis_group, parameter_arrays, ens_profiles):
     """
     Function to output the ensemble of CME paramters, likelihoods, weights, and time-elongation profiles at this analysis step.
-    :param speeds: Array of the ensemble of CME speeds.
-    :param widths: Array of the ensemble of CME widths.
-    :param lons: Array of the ensemble of CME longitudes.
-    :param lats: Array of the ensemble of CME latitudes.
-    :param thicks: Array of the ensemble of CME thicknesses.
-    :param arrivals: Array of the ensemble of CME arrival times at Earth.
-    :param likelihood: Array of the ensemble of likelihoods of the observed CME elongation given the modelled ensemble at this analysis step.
-    :param weights: Array of the particle weights derived from the likelihoods.
+    :param parameter_arrays: Dictionary of arrays containing the CME parameters, likelihoods and weights
     :param ens_profiles: Pandas dataframe containing the time-elongation profiles for each ensemble member at this analysis step.
     """
     # Save ensemble member parameters to file
-    analysis_group.create_dataset('speeds', data=speeds)
-    analysis_group.create_dataset('lons', data=lons)
-    analysis_group.create_dataset('lats', data=lats)
-    analysis_group.create_dataset('widths', data=widths)
-    analysis_group.create_dataset('thicks', data=thicks)
-    analysis_group.create_dataset('arrivals', data=arrivals)
-    analysis_group.create_dataset('likelihood', data=likelihood)
-    analysis_group.create_dataset('weights', data=weights)
+    analysis_group.create_dataset('t_launch', data=parameter_array['t_init'])
+    analysis_group.create_dataset('speed', data=parameter_array['speed'])
+    analysis_group.create_dataset('lon', data=parameter_array['lon'])
+    analysis_group.create_dataset('lat', data=parameter_array['lat'])
+    analysis_group.create_dataset('width', data=parameter_array['width'])
+    analysis_group.create_dataset('thick', data=parameter_array['thick'])
+    analysis_group.create_dataset('arrival', data=parameter_array['arrival'])
+    analysis_group.create_dataset('likelihood', data=parameter_array['likelihood'])
+    analysis_group.create_dataset('weight', data=parameter_array['weight'])
     analysis_group.create_dataset('ens_profiles', data=ens_profiles)
     keys = ens_profiles.columns.to_list()
     col_names = "    ".join(keys)
@@ -353,56 +346,111 @@ def compute_observation_likelihood(t_obs, e_obs, model_flank):
     return likelihood
 
     
-def compute_resampling(speeds, lons, lats, widths, thicks, weights):
+def zscore(x):
+    """
+    Compute z-scores of a parameter
+    : param x: An array of values
+    : return x_z: An array of Z scores of x
+    : return x_avg: The mean of x
+    : return x_std: The standard of deviation of x
+    """
+    x_avg = np.mean(x)
+    x_std = np.std(x)
+    x_z = (x - x_avg) / x_std
+    return x_z, x_avg, x_std
+
+
+def anti_zscore(x_z, x_avg, x_std):
+    """
+    Compute the inverse zscore transform to go from a zscore back to a state variable.
+    : param x_z: An array of Z scores of x
+    : param x_avg: The mean of x
+    : param x_std: The standard of deviation of x
+    : return x: An array of values
+    """
+    x = x_std*x_z + x_avg
+    return x
+
+
+def compute_resampling(parameter_array):
     """
     Use gaussian kernel density estimation to generate new cme parameter values from the weighted distribution of
     current values. Current version only resamples on CME speed.
-    :param speeds: Array of CME speeds of current ensemble members (in km/s)
-    :param lons: Array of CME longitudes of current ensemble members (in degs)
-    :param lats: Array of CME latitudes of current ensemble members (in degs)
-    :param widths: Array of CME widths of current ensemble members (in degs)
-    :param thicks: Array of CME thicknesses of current ensemble members (in solRad)
-    :param weights: Array of weights of the current ensemble members
+    :param parameter_arrays: Dictionary of arrays containing the CME parameters, likelihoods and weights
     :return resampled_cmes: A list of ConeCME objects initialised with the resampled CME parameters
     """
-    
-    n_members = speeds.size
+    # Pull out paramters from dict
+    v = parameter_array['speed']
+    wid = parameter_array['width']
+    lon = parameter_array['lon']
+    lat = parameter_array['lat']
+    weights = parameter_array['weight']
     
     # Remove any particles with invalid weights
     id_good = np.isfinite(weights)
     weights = weights[id_good]
-    v = speeds[id_good]
+    v = v[id_good]
+    lon = lon[id_good]
+    lat = lat[id_good]
+    wid = wid[id_good]
     
     # Convert speeds to z-scores
-    v_av = np.mean(v)
-    v_std = np.std(v)
-    v_z = (v - v_av) / v_std 
+    v_z, v_avg, v_std = zscore(v)
+    wid_z, wid_avg, wid_std = zscore(wid)
+    lon_z, lon_avg, lon_std = zscore(lon)
+    lat_z, lat_avg, lat_std = zscore(lat)
+    
+    # Prepare data for KDE
+    data = np.array([v_z.ravel(), wid_z.ravel(), lon.ravel(), lat.ravel()]).T
     
     # Weighted Gaussian KDE
-    kde = KernelDensity(kernel='gaussian', bandwidth=0.25).fit(v_z.reshape(-1,1), sample_weight=weights.ravel())
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.25).fit(data, sample_weight=weights.ravel())
     
-    # Get resampled particle speeds
-    v_z_resample = kde.sample(n_members)
-    # Invert z-scores to real space
-    v_resample = v_z_resample*v_std + v_av
+    # Resample the particles, and convert back to parameter space from zscore
+    n_members = parameter_array['n_members']
+    resample = kde.sample(n_members)
+    v_z_resamp =  resample[:, 0]
+    wid_z_resamp =  resample[:, 1]
+    lon_z_resamp =  resample[:, 2]
+    lat_z_resamp =  resample[:, 3]
     
+    v_resamp = anti_zscore(v_z_resamp, v_avg, v_std)
+    wid_resamp = anti_zscore(wid_z_resamp, wid_avg, wid_std)
+    lon_resamp = anti_zscore(lon_z_resamp, lon_avg, lon_std)
+    lat_resamp = anti_zscore(lat_z_resamp, lat_avg, lat_std)
+    
+    # Check params are physical
+    id_bad_v = v_resamp <= 0
+    if np.any(id_bad_v):
+        print("Warning: Negative (unphysical) speed samples. Reflecting")
+        v_resamp[id_bad_v] = np.abs(v_resamp[id_bad_v])
+        
+    # Check params are physical
+    id_bad_w = wid_resamp <= 0
+    if np.any(id_bad_w):
+        print("Warning: Negative (unphysical) width samples. Reflecting")
+        wid_resamp[id_bad_w] = np.abs(wid_resamp[id_bad_w])
+        
     # Make new list of ConeCMEs from resampled parameters
     resampled_cmes = []
     
-    # Get launch time from base CME, as this is fixed
-    base_cme = get_base_cme()
-    t_launch = base_cme.t_launch
+    # Get initiation and thickness parameters, as these are fixed.
+    t_init = parameter_array['t_init']
+    thick = parameter_array['t_init']
+    
     for i in range(n_members):
-        v_new = v_resample.ravel()[i]*(u.km/u.s)
-        lon = lons[i]*u.deg
-        lat = lats[i]*u.deg
-        width = widths[i]*u.deg
-        thickness = thicks[i]*u.solRad
-        conecme = H.ConeCME(t_launch=t_launch, longitude=lon, latitude=lat, width=width, v=v_new, thickness=thickness)
+        t_launch = t_init[i]*u.s
+        v_new = v_resamp.ravel()[i]*(u.km/u.s)
+        lon_new = lon_resamp.ravel()[i]*u.deg
+        lat_new = lat_resamp.ravel()[i]*u.deg
+        wid_new = wid_resamp.ravel()[i]*u.deg
+        thickness = thick[i]*u.solRad
+        conecme = H.ConeCME(t_launch=t_launch, longitude=lon_new, latitude=lat_new, width=wid_new, v=v_new, thickness=thickness)
         resampled_cmes.append(conecme)
         
-    return resampled_cmes
-
+    # TODO take out thickness as a parameter from the SIR function. 
+    return resampled_cmes    
+    
     
 def SIR(model, cme, observations, n_ens, tag):
     """
@@ -446,7 +494,7 @@ def SIR(model, cme, observations, n_ens, tag):
         analysis_group.create_dataset('e_obs', data=e_obs)
         
         #Preallocate space for CME parameters for each ensemble member
-        speeds, widths, lons, lats, thicks, arrivals, likelihood = initialise_cme_parameter_ensemble_arrays(n_ens)
+        parameter_array = initialise_cme_parameter_ensemble_arrays(n_ens)
 
         # Loop through the ensemble members and compare to observations.
         for j in range(n_ens):
@@ -456,20 +504,20 @@ def SIR(model, cme, observations, n_ens, tag):
             
             cme_member = model.cmes[0]
             
-            
             # Update CME parameter arrays
-            speeds[j] = cme_member.v.value
-            lons[j] = cme_member.longitude.to(u.deg).value
-            lats[j] = cme_member.latitude.to(u.deg).value
-            widths[j] = cme_member.width.to(u.deg).value
-            thicks[j] = cme_member.thickness.to(u.solRad).value
+            parameter_array['t_init'][j] = cme_member.t_launch.value
+            parameter_array['speed'][j] = cme_member.v.value
+            parameter_array['lon'][j] = cme_member.longitude.to(u.deg).value
+            parameter_array['lat'][j] = cme_member.latitude.to(u.deg).value
+            parameter_array['width'][j] = cme_member.width.to(u.deg).value
+            parameter_array['thick'][j] = cme_member.thickness.to(u.solRad).value
             hit, t_arrive, t_transit, hit_lon, hit_id = cme_member.compute_arrival_at_body('EARTH')
-            arrivals[j] = t_arrive.jd
+            parameter_array['arrival'][j] = t_arrive.jd
             
             # Get pseudo-observations of this ensemble member
             member_obs = Observer(model, cme_member, observer_lon) 
             # Compute the likelihood of the observation given this members time-elongation profile
-            likelihood[j] = compute_observation_likelihood(t_obs, e_obs, member_obs.model_flank)
+            parameter_array['likelihood'][j] = compute_observation_likelihood(t_obs, e_obs, member_obs.model_flank)
             
             # Collect all the ensemble time-elongation profiles together. 
             if j == 0: 
@@ -480,13 +528,13 @@ def SIR(model, cme, observations, n_ens, tag):
                 ens_profiles['e_{:02d}'.format(j)] = member_obs.model_flank['el'].copy()
          
         # Compute particle weights from likelihoods
-        weights = likelihood / np.nansum(likelihood)
+        parameter_array['weight'] = parameter_arary['likelihood'] / np.nansum(parameter_arary['likelihood'])
         
         # Update the output file with the ensemble parameters, weights, and time-elongation profiles at this analysis step
-        update_analysis_file_ensemble_members(analysis_group, speeds, widths, lons, lats, thicks, arrivals, likelihood, weights, ens_profiles)
+        update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_profiles)
         
         # Resample the particles based on the current weights.
-        cme_ensemble = compute_resampling(speeds, lons, lats, widths, thicks, weights)
+        cme_ensemble = compute_resampling(parameter_array)
         
         # Push data to the file
         out_file.flush()
