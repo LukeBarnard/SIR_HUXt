@@ -1,5 +1,6 @@
 from astropy.time import Time
 import astropy.units as u
+import glob
 import h5py
 import numpy as np
 import os
@@ -262,7 +263,9 @@ def open_SIR_output_file(tag):
     :return out_file: The file object for controlling data I/O.
     :return out_filepath: String path of the output file
     """
-    out_filepath = '/home/users/yq904481/research/repos/SIR_HUXt/data/out_data/SIR_HUXt_{}.hdf5'.format(tag)
+    project_dirs = get_project_dirs()
+    out_name = 'SIR_HUXt_{}.hdf5'.format(tag)
+    out_filepath = os.path.join(project_dirs['sir_data'], out_name)
     out_file = h5py.File(out_filepath, 'w')
     
     return out_file, out_filepath
@@ -542,3 +545,23 @@ def SIR(model, cme, observations, n_ens, tag):
     out_file.close()
         
     return
+
+
+def get_project_dirs():
+    """
+    Function to pull out the directories of boundary conditions, ephemeris, and to save figures and output data.
+    """
+    # Find the config.dat file path
+    files = glob.glob('config.dat')
+    
+    with open(files[0], 'r') as file:
+        lines = file.read().splitlines()
+        root = lines[0].split(',')[1]
+        dirs = {line.split(',')[0]: os.path.join(root, line.split(',')[1]) for line in lines[1:]}
+
+        # Just check the directories exist.
+        for val in dirs.values():
+            if not os.path.exists(val):
+                print('Error, invalid path, check config.dat: ' + val)
+                
+    return dirs
