@@ -8,3 +8,5 @@ __pycache__
 *.hdf5
 
 *.png
+
+config.dat
