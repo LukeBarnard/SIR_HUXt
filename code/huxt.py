@@ -1093,30 +1093,21 @@ def _setup_dirs_():
     """
     Function to pull out the directories of boundary conditions, ephemeris, and to save figures and output data.
     """
-    # Find the config.dat file path
-    files = glob.glob('config.dat')
+    # get root 
+    cwd = os.getcwd()
+    root = cwd.split('SIR_HUXt')[0]
+    root = os.path.join(root,'SIR_HUXt')
 
-    if len(files) != 1:
-        # If wrong number of config files, guess directories
-        print('Error: Cannot find correct config file with project directories. Check config.dat exists')
-        print('Defaulting to current directory')
-        dirs = {'root': os.getcwd()}
-        for rel_path in ['boundary_conditions', 'ephemeris', 'HUXt_data', 'HUXt_figures']:
-            if rel_path == 'ephemeris':
-                dirs[rel_path] = os.path.join(os.getcwd(), "ephemeris.hdf5")
-            else:
-                dirs[rel_path] = os.getcwd()
-    else:
-        # Extract data and figure directories from config.dat
-        with open(files[0], 'r') as file:
-            lines = file.read().splitlines()
-            root = lines[0].split(',')[1]
-            dirs = {line.split(',')[0]: os.path.join(root, line.split(',')[1]) for line in lines[1:]}
+    paths = {'boundary_conditions':['data','boundary_conditions'],
+    'ephemeris':['data','ephemeris', 'ephemeris.hdf5'],
+    'HUXt_data':['data','HUXt'],
+    'HUXt_figures':['figures']}
 
+    dirs = {k:os.path.join(root, *v) for k,v in paths.items()}
         # Just check the directories exist.
-        for val in dirs.values():
-            if not os.path.exists(val):
-                print('Error, invalid path, check config.dat: ' + val)
+    for val in dirs.values():
+        if not os.path.exists(val):
+            print('Error, invalid path, check huxt._setup_dirs_(): ' + val)
 
     return dirs
 

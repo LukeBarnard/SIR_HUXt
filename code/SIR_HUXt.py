@@ -551,17 +551,21 @@ def get_project_dirs():
     """
     Function to pull out the directories of boundary conditions, ephemeris, and to save figures and output data.
     """
-    # Find the config.dat file path
-    files = glob.glob('config.dat')
-    
-    with open(files[0], 'r') as file:
-        lines = file.read().splitlines()
-        root = lines[0].split(',')[1]
-        dirs = {line.split(',')[0]: os.path.join(root, line.split(',')[1]) for line in lines[1:]}
+    # get root 
+    cwd = os.getcwd()
+    root = cwd.split('SIR_HUXt')[0]
+    root = os.path.join(root,'SIR_HUXt')
 
+    paths = {'boundary_conditions':['data','boundary_conditions'],
+    'ephemeris':['data','ephemeris', 'ephemeris.hdf5'],
+    'HUXt_data':['data','HUXt'],
+    'sir_data':['data','sir_analysis'],
+    'HUXt_figures':['figures']}
+
+    paths = {k:os.path.join(root, *v) for k,v in paths.items()}
         # Just check the directories exist.
-        for val in dirs.values():
-            if not os.path.exists(val):
-                print('Error, invalid path, check config.dat: ' + val)
-                
-    return dirs
+    for val in paths.values():
+        if not os.path.exists(val):
+            print('Error, invalid path, check sir.get_project_dirs(): ' + val)
+
+    return paths
