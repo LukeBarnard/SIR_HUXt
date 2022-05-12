@@ -187,14 +187,11 @@ def perturb_cme(cme):
     """
 
     v_new = perturb_cme_speed(cme.v)
-    w_new = perturb_cme_width(cme.width)
-    lon_new = perturb_cme_longitude(cme.longitude)
-    lat_new = perturb_cme_latitude(cme.latitude)
     
     cme_perturb = H.ConeCME(t_launch=cme.t_launch,
-                            longitude=lon_new,
-                            latitude=lat_new,
-                            width=w_new,
+                            longitude=cme.longitude,
+                            latitude=cme.latitude,
+                            width=cme.width,
                             v=v_new,
                             thickness=cme.thickness)
     return cme_perturb
