@@ -1,14 +1,17 @@
-import numpy as np
+import copy
+import errno
+import glob
+import os
+
 import astropy.units as u
 from astropy.time import Time, TimeDelta
-from sunpy.coordinates import sun
-import os
-import glob
 import h5py
+import numpy as np
 from numba import jit
-import copy
-# check the numpy version, as this can cause all manner of difficult-to-diagnose problems
 from packaging import version
+from sunpy.coordinates import sun
+
+# check the numpy version, as this can cause all manner of difficult-to-diagnose problems
 assert(version.parse(np.version.version) >= version.parse("1.18"))
 
 
@@ -305,6 +308,7 @@ class ConeCME:
                         r_front.append(r_interp)
                     else:
                         continue
+                        
                 elif len(lon_cme) == 1:
                     # HUXt run on a single longitude, so don't interpolate front to body lon
                     # Instead, check when cme lon within tolerance lon of body
@@ -313,6 +317,8 @@ class ConeCME:
                     if np.isclose(arrive_lon[i], lon_cme, atol=1.5*u.deg):
                         t_front.append(coord['time'].jd)
                         r_front.append(r_cme[0])
+                    else:
+                        continue
 
                 # Has CME front crossed body radius
                 if r_front[-1] > arrive_rad[i]:
@@ -390,7 +396,9 @@ class HUXt:
                  cr_num=np.NaN, cr_lon_init=360.0 * u.deg, latitude=0*u.deg,
                  r_min=30 * u.solRad, r_max=240 * u.solRad,
                  lon_out=np.NaN * u.rad, lon_start=np.NaN * u.rad, lon_stop=np.NaN * u.rad,
-                 simtime=5.0 * u.day, dt_scale=1.0, frame='synodic'):
+                 simtime=5.0 * u.day, dt_scale=1.0, frame='synodic',
+                 input_v_ts=np.NaN * (u.km/u.s),
+                 input_iscme_ts=np.NaN):
         """
         Initialise the HUXt model instance.
 
@@ -406,6 +414,10 @@ class HUXt:
         :param simtime: Duration of the simulation window, in days.
         :param dt_scale: Integer scaling number to set the model output time step relative to the models CFL time.
         :param frame: string determining the rotation frame for the model
+        :param input_v_ts: Time series of inner boundary conditions. For initialising HUXt with, for example, 
+                           in-situ observations from L1. If used as keyword input argument, overrides v_boundary input.
+        :param input_iscme_ts: Boolean mask time series indicating what time steps correspond to CMEs in input_v_ts.
+                               If used as keyword input argument, overrides ConeCMEs past to huxt.sovle().
         """
 
         # some constants and units
@@ -438,8 +450,7 @@ class HUXt:
 
         # Setup radial coordinates - in solar radius
         self.r, self.dr, self.rrel, self.nr = radial_grid(r_min=r_min, r_max=r_max)
-        self.buffertime = ((5.0 * u.day) / (210 * u.solRad)) * self.rrel[-1]
-
+        
         # Setup longitude coordinates - in radians.
         self.lon, self.dlon, self.nlon = longitude_grid(lon_out=lon_out, lon_start=lon_start, lon_stop=lon_stop)
         
@@ -469,6 +480,23 @@ class HUXt:
         # Keep a protected version that isn't processed for use in saving/loading model runs
         self._v_boundary_init_ = self.v_boundary.copy()
         
+        # Process inputs for time dependent boundary conditions from in-situ data
+        # Solar wind boundary
+        if np.all(np.isnan(input_v_ts)):
+            self.input_v_ts = np.NaN * (u.km / u.s)
+            self.input_v_ts_flag = False
+        else:
+            self.input_v_ts = input_v_ts
+            self.input_v_ts_flag = True
+        
+        # CME flag boundary
+        if np.all(np.isnan(input_iscme_ts)):
+            self.input_iscme_ts = np.NaN
+            self.input_iscme_ts_flag = False
+        else:
+            self.input_iscme_ts = input_iscme_ts
+            self.input_iscme_ts_flag = True   
+        
         # Determine CR number, used for spacecraft/planetary positions
         if np.isnan(cr_num):
             print('No initiation time specified. Defaulting to 1977-9-27')
@@ -495,6 +523,11 @@ class HUXt:
         
         v_b_shifted = self.v_boundary[id_sort]
         self.v_boundary = np.interp(lon_boundary.value, lon_shifted, v_b_shifted, period=self.twopi)
+        
+        # Compute the buffertime required to spin up HUXt, based on minimum speed on the inner boundary
+        # and span of radial grid
+        self.buffertime  = 1.5*(self.rrel[-1] / self.v_boundary.min()).to(u.day)
+        
         # Preallocate space for the output for the solar wind fields for the cme and ambient solution.
         self.v_grid = np.zeros((self.nt_out, self.nr, self.nlon)) * self.kms
         
@@ -646,39 +679,45 @@ class HUXt:
         # ======================================================================
         # If the input time series has not been prescribed,
         # Generate it from v(long)
-        #if hasattr(self, 'input_v_ts'):
-            #print('Using prescribed input V time series')
-        #    make_ts = False
-        #else:
-            #print('Generating V time series from prescribed v(long)')
-        #    self.ts_from_vlong()
-        self.ts_from_vlong()
+        if not self.input_v_ts_flag:
+            self.ts_from_vlong()           
         
         # ======================================================================
         # Add CMEs
         # ======================================================================
         # See if the cmes-flag input time series has been prescribed
-
-        #print('Adding CMEs to input time series ')  
-        self.input_iscme_ts = 0 * np.ones((self.model_time.size,
-                                           self.nlon), dtype='int')
-
-        n_cme = len(self.cmes)
-        # Loop through model longitudes and add the CMEs
-        for i in range(self.lon.size):
-            if self.lon.size == 1:
-                lon_out = self.lon.value
-            else:
-                lon_out = self.lon[i].value
-
-            # Add the CMEs to the input series
-            v, isincme = add_cmes_to_input_series(self.input_v_ts[:,i], 
-                                                  self.model_time, lon_out, 
-                                                  self.r[0].to('km').value, cme_params, 
-                                                  self.latitude.value)
-            self.input_v_ts[:,i] = v
-            self.input_iscme_ts[:,i] = isincme
-
+        if self.input_iscme_ts_flag:
+            # CME input has been parsed as input - set up some dummy coneCME's
+            # to hold the CME tracking data
+            n_cme = np.nanmax(self.input_iscme_ts)
+            # Create dummy CME list to sort the boundaries
+            self.cmes = []
+            for n in range(0, n_cme):
+                cme = ConeCME(t_launch=0*u.s, longitude=0*u.deg, 
+                              width=0*u.deg, v=0*self.kms, thickness=0*u.solRad)
+                self.cmes.append(cme)
+        else:
+            # CME input has not been specified, but ConeCME's may have been input
+            # So configure input_iscme_ts from the ConeCMES.
+            self.input_iscme_ts = 0 * np.ones((self.model_time.size,
+                                               self.nlon), dtype='int')
+            
+            n_cme = len(self.cmes)
+            # Loop through model longitudes and add the CMEs
+            for i in range(self.lon.size):
+                if self.lon.size == 1:
+                    lon_out = self.lon.value
+                else:
+                    lon_out = self.lon[i].value
+     
+                # Add the CMEs to the input series
+                v, isincme = add_cmes_to_input_series(self.input_v_ts[:,i], 
+                                                      self.model_time, lon_out, 
+                                                      self.r[0].to('km').value, cme_params, 
+                                                      self.latitude.value)
+                self.input_v_ts[:,i] = v
+                self.input_iscme_ts[:,i] = isincme
+        
         # ======================================================================
         # Solve the time series at each longitude
         # ======================================================================
@@ -1093,22 +1132,33 @@ def _setup_dirs_():
     """
     Function to pull out the directories of boundary conditions, ephemeris, and to save figures and output data.
     """
-    # get root 
-    cwd = os.getcwd()
-    root = cwd.split('SIR_HUXt')[0]
-    root = os.path.join(root,'SIR_HUXt')
+    
+    # Get path of huxt.py, and work out root dir of HUXt repository
+    cwd = os.path.abspath(os.path.dirname(__file__))
+    root = os.path.dirname(cwd)
+   
+    # Config file must be saved in HUXt/code
+    config_file = os.path.join(cwd, 'config.dat')
+    
+    if os.path.isfile(config_file):
+        
+        with open(config_file, 'r') as file:
+            lines = file.read().splitlines()
+            dirs = {line.split(',')[0]: os.path.join(root, line.split(',')[1]) for line in lines}
+            
+        dirs['root'] = root
 
-    paths = {'boundary_conditions':['data','boundary_conditions'],
-    'ephemeris':['data','ephemeris', 'ephemeris.hdf5'],
-    'HUXt_data':['data','HUXt'],
-    'HUXt_figures':['figures']}
-
-    dirs = {k:os.path.join(root, *v) for k,v in paths.items()}
         # Just check the directories exist.
-    for val in dirs.values():
-        if not os.path.exists(val):
-            print('Error, invalid path, check huxt._setup_dirs_(): ' + val)
-
+        for key, val in dirs.items():
+                if key == 'ephemeris':
+                    if not os.path.isfile(val):
+                        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), val)
+                else:
+                    if not os.path.isdir(val):
+                        raise NotADirectoryError(errno.ENOENT, os.strerror(errno.ENOENT), val)
+    else:
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), config_file)
+                
     return dirs
 
 
@@ -1444,7 +1494,7 @@ def load_HUXt_run(filepath):
                            for j in range(len(coords_group))}
 
             for time_key, pos in coords_group.items():
-                t = np.int(time_key.split("_")[2])
+                t = int(time_key.split("_")[2])
                 time_out = Time(pos['time'][()], format="isot")
                 time_out.format = 'jd'
                 coords_data[t]['time'] = time_out
@@ -1462,9 +1512,7 @@ def load_HUXt_run(filepath):
 
     else:
         # File doesnt exist return nothing
-        print("Warning: {} doesnt exist.".format(filepath))
-        cme_list = []
-        model = []
-
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), filepath)
+        
     return model, cme_list
     

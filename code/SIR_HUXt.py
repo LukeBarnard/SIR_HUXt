@@ -1,14 +1,17 @@
+import errno
+import glob
+import os
+
 from astropy.time import Time
 import astropy.units as u
-import glob
 import h5py
 import numpy as np
-import os
 import pandas as pd
 import sunpy.coordinates.sun as sn
 import scipy.stats as st
 from sklearn.neighbors import KernelDensity
-# Local packages
+
+
 import huxt as H
 import huxt_inputs as Hin
 import huxt_analysis as Ha
@@ -256,19 +259,24 @@ def generate_cme_ensemble(cme, n_ensemble):
     return cme_ensemble
     
 
-def open_SIR_output_file(tag):
+def open_SIR_output_file(output_dir, tag):
     """
     Function to open a HDF5 file to store the SIR analysis steps.
+    :param output_dir: The absolute path to the directory to store the analysis file
     :param tag: A string tag to append to the file name
-    :return out_file: The file object for controlling data I/O.
-    :return out_filepath: String path of the output file
+    :return file: The file object for controlling data I/O.
+    :return filepath: String path of the output file
     """
-    project_dirs = get_project_dirs()
-    out_name = 'SIR_HUXt_{}.hdf5'.format(tag)
-    out_filepath = os.path.join(project_dirs['sir_data'], out_name)
-    out_file = h5py.File(out_filepath, 'w')
+    name = 'SIR_HUXt_{}.hdf5'.format(tag)
+    if os.path.isdir(output_dir):
+        filepath = os.path.join(output_dir, name)
+    else:
+        dirs = get_project_dirs()
+        filepath = os.path.join(dirs['sir_analysis'], name)
+        
+    file = h5py.File(filepath, 'w')
     
-    return out_file, out_filepath
+    return file, filepath
 
 
 def initialise_cme_parameter_ensemble_arrays(n_ensemble):
@@ -305,10 +313,10 @@ def update_analysis_file_initial_values(file_handle, cme, observations):
     return
 
 
-def update_analysis_file_ensemble_members(analysis_group, parameter_arrays, ens_profiles):
+def update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_profiles):
     """
     Function to output the ensemble of CME paramters, likelihoods, weights, and time-elongation profiles at this analysis step.
-    :param parameter_arrays: Dictionary of arrays containing the CME parameters, likelihoods and weights
+    :param parameter_array: Dictionary of arrays containing the CME parameters, likelihoods and weights
     :param ens_profiles: Pandas dataframe containing the time-elongation profiles for each ensemble member at this analysis step.
     """
     # Save ensemble member parameters to file
@@ -382,29 +390,21 @@ def compute_resampling(parameter_array):
     :param parameter_arrays: Dictionary of arrays containing the CME parameters, likelihoods and weights
     :return resampled_cmes: A list of ConeCME objects initialised with the resampled CME parameters
     """
+    
     # Pull out paramters from dict
     v = parameter_array['speed']
-    wid = parameter_array['width']
-    lon = parameter_array['lon']
-    lat = parameter_array['lat']
     weights = parameter_array['weight']
     
     # Remove any particles with invalid weights
     id_good = np.isfinite(weights)
     weights = weights[id_good]
     v = v[id_good]
-    lon = lon[id_good]
-    lat = lat[id_good]
-    wid = wid[id_good]
     
     # Convert speeds to z-scores
     v_z, v_avg, v_std = zscore(v)
-    wid_z, wid_avg, wid_std = zscore(wid)
-    lon_z, lon_avg, lon_std = zscore(lon)
-    lat_z, lat_avg, lat_std = zscore(lat)
     
     # Prepare data for KDE
-    data = np.array([v_z.ravel(), wid_z.ravel(), lon.ravel(), lat.ravel()]).T
+    data = v_z.reshape(-1,1)
     
     # Weighted Gaussian KDE
     kde = KernelDensity(kernel='gaussian', bandwidth=0.25).fit(data, sample_weight=weights.ravel())
@@ -412,50 +412,41 @@ def compute_resampling(parameter_array):
     # Resample the particles, and convert back to parameter space from zscore
     n_members = parameter_array['n_members']
     resample = kde.sample(n_members)
-    v_z_resamp =  resample[:, 0]
-    wid_z_resamp =  resample[:, 1]
-    lon_z_resamp =  resample[:, 2]
-    lat_z_resamp =  resample[:, 3]
-    
+    v_z_resamp =  resample[:]
+  
     v_resamp = anti_zscore(v_z_resamp, v_avg, v_std)
-    wid_resamp = anti_zscore(wid_z_resamp, wid_avg, wid_std)
-    lon_resamp = anti_zscore(lon_z_resamp, lon_avg, lon_std)
-    lat_resamp = anti_zscore(lat_z_resamp, lat_avg, lat_std)
     
     # Check params are physical
     id_bad_v = v_resamp <= 0
     if np.any(id_bad_v):
         print("Warning: Negative (unphysical) speed samples. Reflecting")
         v_resamp[id_bad_v] = np.abs(v_resamp[id_bad_v])
-        
-    # Check params are physical
-    id_bad_w = wid_resamp <= 0
-    if np.any(id_bad_w):
-        print("Warning: Negative (unphysical) width samples. Reflecting")
-        wid_resamp[id_bad_w] = np.abs(wid_resamp[id_bad_w])
-        
+            
     # Make new list of ConeCMEs from resampled parameters
     resampled_cmes = []
     
     # Get initiation and thickness parameters, as these are fixed.
     t_init = parameter_array['t_init']
     thick = parameter_array['t_init']
+    wid = parameter_array['width']
+    lon = parameter_array['lon']
+    lat = parameter_array['lat']
     
     for i in range(n_members):
         t_launch = t_init[i]*u.s
         v_new = v_resamp.ravel()[i]*(u.km/u.s)
-        lon_new = lon_resamp.ravel()[i]*u.deg
-        lat_new = lat_resamp.ravel()[i]*u.deg
-        wid_new = wid_resamp.ravel()[i]*u.deg
+        lon_new = lon[i]*u.deg
+        lat_new = lat[i]*u.deg
+        wid_new = wid[i]*u.deg
         thickness = thick[i]*u.solRad
         conecme = H.ConeCME(t_launch=t_launch, longitude=lon_new, latitude=lat_new, width=wid_new, v=v_new, thickness=thickness)
         resampled_cmes.append(conecme)
         
-    # TODO take out thickness as a parameter from the SIR function. 
+
     return resampled_cmes    
     
     
-def SIR(model, cme, observations, n_ens, tag):
+def SIR(model, cme, observations, n_ens, output_path, tag):
     """
     Function implementing the Sequential Importance Resampling of initial CME parameters in HUXt
     :param model: A HUXt instance.
@@ -463,6 +454,7 @@ def SIR(model, cme, observations, n_ens, tag):
     :param observations: A dictionary containing the observed CME arrival time, transit time, observer longitude and a
                          pandas data frame of the observed CME flank elongation.
     :param n_ens: The number of ensemble members.
+    :param output_path: The full path of a directory to store the SIR analysis file
     :param tag: A string to append to output file name.
     """
     
@@ -470,7 +462,7 @@ def SIR(model, cme, observations, n_ens, tag):
     n_analysis_steps = 8
     
     # Open file for storing SIR analysis
-    out_file, out_filepath = open_SIR_output_file(tag)
+    out_file, out_filepath = open_SIR_output_file(output_path, tag)
     
     observed_cme = observations['observed_cme_flank']
     observer_lon = observations['observer_lon']
@@ -531,7 +523,7 @@ def SIR(model, cme, observations, n_ens, tag):
                 ens_profiles['e_{:02d}'.format(j)] = member_obs.model_flank['el'].copy()
          
         # Compute particle weights from likelihoods
-        parameter_array['weight'] = parameter_arary['likelihood'] / np.nansum(parameter_arary['likelihood'])
+        parameter_array['weight'] = parameter_array['likelihood'] / np.nansum(parameter_array['likelihood'])
         
         # Update the output file with the ensemble parameters, weights, and time-elongation profiles at this analysis step
         update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_profiles)
@@ -551,21 +543,31 @@ def get_project_dirs():
     """
     Function to pull out the directories of boundary conditions, ephemeris, and to save figures and output data.
     """
-    # get root 
-    cwd = os.getcwd()
-    root = cwd.split('SIR_HUXt')[0]
-    root = os.path.join(root,'SIR_HUXt')
+    
+    # Get path of huxt.py, and work out root dir of HUXt repository
+    cwd = os.path.abspath(os.path.dirname(__file__))
+    root = os.path.dirname(cwd)
+   
+    # Config file must be saved in HUXt/code
+    config_file = os.path.join(cwd, 'config.dat')
+    
+    if os.path.isfile(config_file):
+        
+        with open(config_file, 'r') as file:
+            lines = file.read().splitlines()
+            dirs = {line.split(',')[0]: os.path.join(root, line.split(',')[1]) for line in lines}
+            
+        dirs['root'] = root
 
-    paths = {'boundary_conditions':['data','boundary_conditions'],
-    'ephemeris':['data','ephemeris', 'ephemeris.hdf5'],
-    'HUXt_data':['data','HUXt'],
-    'sir_data':['data','sir_analysis'],
-    'HUXt_figures':['figures']}
-
-    paths = {k:os.path.join(root, *v) for k,v in paths.items()}
         # Just check the directories exist.
-    for val in paths.values():
-        if not os.path.exists(val):
-            print('Error, invalid path, check sir.get_project_dirs(): ' + val)
-
-    return paths
+        for key, val in dirs.items():
+                if key == 'ephemeris':
+                    if not os.path.isfile(val):
+                        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), val)
+                else:
+                    if not os.path.isdir(val):
+                        raise NotADirectoryError(errno.ENOENT, os.strerror(errno.ENOENT), val)
+    else:
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), config_file)
+                
+    return dirs

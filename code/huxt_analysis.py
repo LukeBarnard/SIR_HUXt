@@ -1,12 +1,13 @@
-import numpy as np
+import os
+
 import astropy.units as u
 from astropy.time import Time
-import os
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import moviepy.editor as mpy
-import pandas as pd
 from moviepy.video.io.bindings import mplfig_to_npimage
+import numpy as np
+import pandas as pd
 
 import huxt as H
 
@@ -151,7 +152,7 @@ def animate(model, tag):
 
     # Set the duration of the movie
     # Scaled so a 5 day simulation with dt_scale=4 is a 10 second movie.
-    duration = model.simtime.value * (1 / 432000)
+    duration = model.simtime.value * (10 / 432000)
 
     def make_frame(t):
         """

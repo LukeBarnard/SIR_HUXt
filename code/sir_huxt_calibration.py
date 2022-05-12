@@ -1,20 +1,21 @@
-import huxt as H
-import huxt_analysis as HA
-import SIR_HUXt as sir
-
-import astropy.units as u
+import os
 import glob
+
+from astropy.time import Time
+import astropy.units as u
 import h5py
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 import scipy.stats as st
-
 from sklearn.neighbors import KernelDensity
-from astropy.time import Time
+
+import huxt as H
+import huxt_analysis as HA
+import SIR_HUXt as sir
 
 
-def experiment_uniform_wind_multi_param():
+def experiment_uniform_wind():
     """
     Run the SIR scheme repeatedly for guesses at one truth CME and different realisations of noise added to the observations.
     Use a uniform solar wind background.
@@ -37,6 +38,13 @@ def experiment_uniform_wind_multi_param():
     observer_lon = -60*u.deg
     L5Obs = sir.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=30.0)
     
+    # Make directory to store this experiment in
+    dirs = sir.get_project_dirs()
+    output_dir = 'uniform_wind_resample_v'
+    output_dir = os.path.join(dirs['sir_analysis'], output_dir)
+    if not os.path.isdir(output_dir):
+        os.mkdir(output_dir)
+    
     # Run the SIR scheme on this event many times to see how the performance is
     n_ens = 20
     n_runs = 100
@@ -51,16 +59,15 @@ def experiment_uniform_wind_multi_param():
         observations = {'t_arrive':t_arrive, 't_transit':t_transit, 'observer_lon':observer_lon,
                         'observed_cme_flank':observed_cme_flank, 'cme_params':cme_truth.parameter_array()}
     
-        tag = "uniform_multi_param_n{:03d}_run_{:03d}".format(n_ens, i)
-        sir.SIR(model, cme_guess, observations, n_ens, tag)
+        tag = "uniform_wind_run_{:03d}".format(i)
+        sir.SIR(model, cme_guess, observations, n_ens, output_dir, tag)
       
-        
     return
     
     
 if __name__ == "__main__":
     
-    experiment_uniform_wind_multi_param()
+    experiment_uniform_wind()
     
     
     
