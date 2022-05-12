@@ -1,2 +1,4 @@
-# Ignore newly downloaded  MAS data
-HelioMAS*.hdf
+# Ignore everything in this directory
+*
+# Except this file
+!.gitignore
