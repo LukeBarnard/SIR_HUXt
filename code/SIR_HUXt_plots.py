@@ -35,7 +35,7 @@ def plot_huxt_with_observer(time, model, observer, add_flank=False, add_fov=Fals
     lon_arr, dlon, nlon = H.longitude_grid()
     lon, rad = np.meshgrid(lon_arr.value, model.r.value)
     mymap = mpl.cm.viridis
-    v_sub = model.v_grid_cme.value[id_t, :, :].copy()
+    v_sub = model.v_grid.value[id_t, :, :].copy()
     # Insert into full array
     if lon_arr.size != model.lon.size:
         v = np.zeros((model.nr, nlon)) * np.NaN

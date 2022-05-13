@@ -5,6 +5,7 @@ import os
 from astropy.time import Time
 import astropy.units as u
 import h5py
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sunpy.coordinates.sun as sn
@@ -15,6 +16,7 @@ from sklearn.neighbors import KernelDensity
 import huxt as H
 import huxt_inputs as Hin
 import huxt_analysis as Ha
+import SIR_HUXt_plots as sirplt
 
 
 class Observer:
@@ -421,7 +423,7 @@ def compute_resampling(parameter_array):
     
     # Get initiation and thickness parameters, as these are fixed.
     t_init = parameter_array['t_init']
-    thick = parameter_array['t_init']
+    thick = parameter_array['thick']
     wid = parameter_array['width']
     lon = parameter_array['lon']
     lat = parameter_array['lat']
@@ -505,6 +507,12 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
             
             # Get pseudo-observations of this ensemble member
             member_obs = Observer(model, cme_member, observer_lon) 
+            
+            # Plot out the ensemble member
+            #fig, ax = sirplt.plot_huxt_with_observer(model.time_out[50], model, member_obs, add_flank=True, add_fov=True)
+            #fig.savefig(tag+"a{:02d}_e{:02d}.png".format(i,j))
+            #plt.close('all')
+            
             # Compute the likelihood of the observation given this members time-elongation profile
             parameter_array['likelihood'][j] = compute_observation_likelihood(t_obs, e_obs, member_obs.model_flank)
             
