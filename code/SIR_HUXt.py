@@ -349,7 +349,7 @@ def compute_observation_likelihood(t_obs, e_obs, model_flank):
     # Get modelled elongation at closest match
     e_member = model_flank.loc[id_obs, 'el']
     # Compute likelihood of obs given modelled flank using Gaussian likelihood function
-    likelihood = st.norm.pdf(e_obs, loc=e_member, scale=0.2)
+    likelihood = st.norm.pdf(e_obs, loc=e_member, scale=0.25)
     
     return likelihood
 
@@ -400,11 +400,8 @@ def compute_resampling(parameter_array):
     # Convert speeds to z-scores
     v_z, v_avg, v_std = zscore(v)
     
-    # Prepare data for KDE
-    data = v_z.reshape(-1,1)
-    
     # Weighted Gaussian KDE
-    kde = KernelDensity(kernel='gaussian', bandwidth=0.25).fit(data, sample_weight=weights.ravel())
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.3).fit(v_z.reshape(-1,1), sample_weight=weights.ravel())
     
     # Resample the particles, and convert back to parameter space from zscore
     n_members = parameter_array['n_members']
