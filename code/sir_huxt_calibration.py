@@ -46,7 +46,7 @@ def experiment_uniform_wind():
         os.mkdir(output_dir)
     
     # Run the SIR scheme on this event many times to see how the performance is
-    n_ens = 20
+    n_ens = 30
     n_runs = 100
     for i in range(n_runs):
     

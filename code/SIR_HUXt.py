@@ -189,11 +189,12 @@ def perturb_cme(cme):
     """
 
     v_new = perturb_cme_speed(cme.v)
+    wid_new = perturb_cme_width(cme.width)
     
     cme_perturb = H.ConeCME(t_launch=cme.t_launch,
                             longitude=cme.longitude,
                             latitude=cme.latitude,
-                            width=cme.width,
+                            width=wid_new,
                             v=v_new,
                             thickness=cme.thickness)
     return cme_perturb
@@ -392,39 +393,49 @@ def compute_resampling(parameter_array):
     
     # Pull out paramters from dict
     v = parameter_array['speed']
+    wid = parameter_array['width']
     weights = parameter_array['weight']
     
     # Remove any particles with invalid weights
     id_good = np.isfinite(weights)
     weights = weights[id_good]
     v = v[id_good]
-    
+    wid = wid[id_good]
+
     # Convert speeds to z-scores
     v_z, v_avg, v_std = zscore(v)
-    
-    # Weighted Gaussian KDE
-    kde = KernelDensity(kernel='gaussian', bandwidth=0.3).fit(v_z.reshape(-1,1), sample_weight=weights.ravel())
-    
+    wid_z, wid_avg, wid_std = zscore(wid)
+
+    data = np.array([v_z, wid_z]).T
+
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.3).fit(data, sample_weight=weights.ravel())
+
     # Resample the particles, and convert back to parameter space from zscore
     n_members = parameter_array['n_members']
     resample = kde.sample(n_members)
-    v_z_resamp =  resample[:]
-  
+
+    v_z_resamp =  resample[:,0]
     v_resamp = anti_zscore(v_z_resamp, v_avg, v_std)
-    
-    # Check params are physical
+
+    wid_z_resamp =  resample[:, 1]
+    wid_resamp = anti_zscore(wid_z_resamp, wid_avg, wid_std)
+
     id_bad_v = v_resamp <= 0
     if np.any(id_bad_v):
         print("Warning: Negative (unphysical) speed samples. Reflecting")
         v_resamp[id_bad_v] = np.abs(v_resamp[id_bad_v])
-            
+
+    id_bad_wid = wid_resamp <= 0
+    if np.any(id_bad_wid):
+        print("Warning: Negative (unphysical) width samples. Reflecting")
+        wid_resamp[id_bad_wid] = np.abs(v_resamp[id_bad_wid])
+
     # Make new list of ConeCMEs from resampled parameters
     resampled_cmes = []
     
     # Get initiation and thickness parameters, as these are fixed.
     t_init = parameter_array['t_init']
     thick = parameter_array['thick']
-    wid = parameter_array['width']
     lon = parameter_array['lon']
     lat = parameter_array['lat']
     
@@ -433,7 +444,7 @@ def compute_resampling(parameter_array):
         v_new = v_resamp.ravel()[i]*(u.km/u.s)
         lon_new = lon[i]*u.deg
         lat_new = lat[i]*u.deg
-        wid_new = wid[i]*u.deg
+        wid_new = wid_resamp.ravel()[i]*u.deg
         thickness = thick[i]*u.solRad
         conecme = H.ConeCME(t_launch=t_launch, longitude=lon_new, latitude=lat_new, width=wid_new, v=v_new, thickness=thickness)
         resampled_cmes.append(conecme)
