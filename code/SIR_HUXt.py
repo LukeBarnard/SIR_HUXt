@@ -189,12 +189,12 @@ def perturb_cme(cme):
     """
 
     v_new = perturb_cme_speed(cme.v)
-    wid_new = perturb_cme_width(cme.width)
+    lon_new = perturb_cme_width(cme.longitude)
     
     cme_perturb = H.ConeCME(t_launch=cme.t_launch,
-                            longitude=cme.longitude,
+                            longitude=lon_new,
                             latitude=cme.latitude,
-                            width=wid_new,
+                            width=cme.width,
                             v=v_new,
                             thickness=cme.thickness)
     return cme_perturb
@@ -208,6 +208,10 @@ def perturb_cme_longitude(lon):
     """
     lon_spread = 5*u.deg
     lon_out = lon + np.random.uniform(-1,1,1)*lon_spread
+    
+    # Check lon_out is between 0 and 2 pi.
+    lon_out = H._zerototwopi_(lon_out.to(u.rad).value)
+    lon_out = lon_out*u.rad
     return lon_out[0]
 
 
@@ -393,20 +397,24 @@ def compute_resampling(parameter_array):
     
     # Pull out paramters from dict
     v = parameter_array['speed']
-    wid = parameter_array['width']
+    lon = parameter_array['lon']
     weights = parameter_array['weight']
-    
+
     # Remove any particles with invalid weights
     id_good = np.isfinite(weights)
     weights = weights[id_good]
     v = v[id_good]
-    wid = wid[id_good]
+    lon = lon[id_good]
+
+    # center lons between -180 - 180
+    id_high = lon > 180
+    lon[id_high] = lon[id_high] - 360
 
     # Convert speeds to z-scores
     v_z, v_avg, v_std = zscore(v)
-    wid_z, wid_avg, wid_std = zscore(wid)
+    lon_z, lon_avg, lon_std = zscore(lon)
 
-    data = np.array([v_z, wid_z]).T
+    data = np.array([v_z, lon_z]).T
 
     kde = KernelDensity(kernel='gaussian', bandwidth=0.3).fit(data, sample_weight=weights.ravel())
 
@@ -414,41 +422,35 @@ def compute_resampling(parameter_array):
     n_members = parameter_array['n_members']
     resample = kde.sample(n_members)
 
-    v_z_resamp =  resample[:,0]
+    v_z_resamp =  resample[:, 0]
     v_resamp = anti_zscore(v_z_resamp, v_avg, v_std)
 
-    wid_z_resamp =  resample[:, 1]
-    wid_resamp = anti_zscore(wid_z_resamp, wid_avg, wid_std)
+    lon_z_resamp =  resample[:, 1]
+    lon_resamp = anti_zscore(lon_z_resamp, lon_avg, lon_std)
 
     id_bad_v = v_resamp <= 0
     if np.any(id_bad_v):
         print("Warning: Negative (unphysical) speed samples. Reflecting")
         v_resamp[id_bad_v] = np.abs(v_resamp[id_bad_v])
 
-    id_bad_wid = wid_resamp <= 0
-    if np.any(id_bad_wid):
-        print("Warning: Negative (unphysical) width samples. Reflecting")
-        wid_resamp[id_bad_wid] = np.abs(v_resamp[id_bad_wid])
-
     # Make new list of ConeCMEs from resampled parameters
     resampled_cmes = []
-    
+
     # Get initiation and thickness parameters, as these are fixed.
     t_init = parameter_array['t_init']
     thick = parameter_array['thick']
-    lon = parameter_array['lon']
+    wid = parameter_array['width']
     lat = parameter_array['lat']
-    
+
     for i in range(n_members):
         t_launch = t_init[i]*u.s
         v_new = v_resamp.ravel()[i]*(u.km/u.s)
-        lon_new = lon[i]*u.deg
+        lon_new = lon_resamp.ravel()[i]*u.deg
         lat_new = lat[i]*u.deg
-        wid_new = wid_resamp.ravel()[i]*u.deg
+        wid_new = wid[i]*u.deg
         thickness = thick[i]*u.solRad
         conecme = H.ConeCME(t_launch=t_launch, longitude=lon_new, latitude=lat_new, width=wid_new, v=v_new, thickness=thickness)
         resampled_cmes.append(conecme)
-        
 
     return resampled_cmes    
     
@@ -478,7 +480,7 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
     update_analysis_file_initial_values(out_file, cme, observations)
     
     # Generate the initial ensemble 
-    cme_ensemble = generate_cme_ensemble(cme, n_ens)    
+    cme_ensemble = generate_cme_ensemble(cme, n_ens)
     
     # Loop through the observations for each analysis step
     for i in range(n_analysis_steps):
@@ -520,8 +522,8 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
             member_obs = Observer(model, cme_member, observer_lon) 
             
             # Plot out the ensemble member
-            #fig, ax = sirplt.plot_huxt_with_observer(model.time_out[50], model, member_obs, add_flank=True, add_fov=True)
-            #fig.savefig(tag+"a{:02d}_e{:02d}.png".format(i,j))
+            #fig, ax = sirplt.plot_huxt_with_observer(model.time_out[20], model, member_obs, add_flank=True, add_fov=True)
+            #fig.savefig(tag+"a{:02d}_e{:02d}_v2.png".format(i,j))
             #plt.close('all')
             
             # Compute the likelihood of the observation given this members time-elongation profile

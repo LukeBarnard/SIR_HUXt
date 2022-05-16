@@ -63,8 +63,20 @@ def plot_huxt_with_observer(time, model, observer, add_flank=False, add_fov=Fals
     cnt = ax.contourf(lon, rad, v, levels=levels, cmap=mymap, extend='both')
 
     # Add on CME boundaries and Observer
-    cme = model.cmes[0]
-    ax.plot(cme.coords[id_t]['lon'], cme.coords[id_t]['r'], '-', color='darkorange', linewidth=3, zorder=3)
+    cme_colors = ['darkorange', 'c', 'm', 'y', 'deeppink', 'r']
+    for j, cme in enumerate(model.cmes):
+        cid = np.mod(j, len(cme_colors))
+        cme_lons = cme.coords[id_t]['lon']
+        cme_r = cme.coords[id_t]['r'].to(u.solRad)
+        if np.any(np.isfinite(cme_r)):
+            # Pad out to close the profile.
+            cme_lons = np.append(cme_lons, cme_lons[0])
+            cme_r = np.append(cme_r, cme_r[0])
+            ax.plot(cme_lons, cme_r, '-', color=cme_colors[cid], linewidth=3, zorder=3)
+            
+    #cme = model.cmes[0]
+    #ax.plot(cme.coords[id_t]['lon'], cme.coords[id_t]['r'], '-', color='darkorange', linewidth=3, zorder=3)
+    
     ert = model.get_observer('EARTH')
     ax.plot(ert.lon[id_t], ert.r[id_t], 'co', markersize=16, label='Earth')            
 
