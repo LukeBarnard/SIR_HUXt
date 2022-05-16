@@ -40,7 +40,7 @@ def experiment_uniform_wind():
     
     # Make directory to store this experiment in
     dirs = sir.get_project_dirs()
-    output_dir = 'uniform_wind_resample_v_and_wid'
+    output_dir = 'uniform_wind_resample_v_and_lon'
     output_dir = os.path.join(dirs['sir_analysis'], output_dir)
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
