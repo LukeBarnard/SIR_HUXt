@@ -12,60 +12,9 @@ from sklearn.neighbors import KernelDensity
 
 import huxt as H
 import huxt_analysis as HA
-import SIR_HUXt as sir
 import sir_huxt_lon as shl
 import sir_huxt_v as shv
-import sir_huxt_wid as shw
-
-
-def experiment_uniform_wind():
-    """
-    Run the SIR scheme repeatedly for guesses at one truth CME and different realisations of noise added to the observations.
-    Use a uniform solar wind background.
-    """ 
-    # Test the SIR scheme
-    np.random.seed(196302)
-    
-    start_time = Time('2008-06-30T00:00:00')
-    
-    model = sir.setup_huxt(start_time, uniform_wind=True)
-    
-    # Generate a "truth" CME
-    base_cme = sir.get_base_cme()
-    
-    # Get HUXt solution of this truth CME, and observations from L5
-    model.solve([base_cme])
-    cme_truth = model.cmes[0]
-    hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
-    
-    observer_lon = -60*u.deg
-    L5Obs = sir.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=30.0)
-    
-    # Make directory to store this experiment in
-    dirs = sir.get_project_dirs()
-    output_dir = 'uniform_wind_resample_v_and_lon'
-    output_dir = os.path.join(dirs['sir_analysis'], output_dir)
-    if not os.path.isdir(output_dir):
-        os.mkdir(output_dir)
-    
-    # Run the SIR scheme on this event many times to see how the performance is
-    n_ens = 30
-    n_runs = 100
-    for i in range(n_runs):
-    
-        # Make a guess at the CME initial values 
-        cme_guess = sir.perturb_cme(base_cme)
-        
-        # Low observational error
-        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=3, el_min=4.0, el_max=30.0)
-    
-        observations = {'t_arrive':t_arrive, 't_transit':t_transit, 'observer_lon':observer_lon,
-                        'observed_cme_flank':observed_cme_flank, 'cme_params':cme_truth.parameter_array()}
-    
-        tag = "uniform_wind_run_{:03d}".format(i)
-        sir.SIR(model, cme_guess, observations, n_ens, output_dir, tag)
-      
-    return
+import sir_huxt_width as shw
 
 
 def calibrate_shv():
@@ -76,9 +25,7 @@ def calibrate_shv():
     # Test the SIR scheme
     np.random.seed(190802)
     
-    start_time = Time('2008-06-30T00:00:00')
-    
-    model = shv.setup_huxt(start_time, uniform_wind=True)
+    model = shv.setup_uniform_huxt(dt_scale=14)
     
     # Generate a "truth" CME
     base_cme = shv.get_base_cme()
@@ -86,7 +33,6 @@ def calibrate_shv():
     # Get HUXt solution of this truth CME, and observations from L5
     model.solve([base_cme])
     cme_truth = model.cmes[0]
-    hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
     
     observer_lon = -60*u.deg
     L5Obs = shv.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=30.0)
@@ -107,11 +53,10 @@ def calibrate_shv():
         cme_guess = shv.perturb_cme(base_cme)
         
         # Low observational error
-        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=3, el_min=4.0, el_max=30.0)
+        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=30.0)
     
-        observations = {'t_arrive':t_arrive, 't_transit':t_transit, 'observer_lon':observer_lon,
-                        'observed_cme_flank':observed_cme_flank, 'cme_params':cme_truth.parameter_array()}
-    
+        observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array()}
+
         tag = "shv_run_{:03d}".format(i)
         shv.SIR(model, cme_guess, observations, n_ens, output_dir, tag)
       
@@ -128,7 +73,7 @@ def calibrate_shl():
     
     start_time = Time('2008-06-30T00:00:00')
     
-    model = shl.setup_huxt(start_time, uniform_wind=True)
+    model = shl.setup_uniform_huxt(dt_scale=14)
     
     # Generate a "truth" CME
     base_cme = shl.get_base_cme()
@@ -157,11 +102,10 @@ def calibrate_shl():
         cme_guess = shl.perturb_cme(base_cme)
         
         # Low observational error
-        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=3, el_min=4.0, el_max=30.0)
+        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=30.0)
     
-        observations = {'t_arrive':t_arrive, 't_transit':t_transit, 'observer_lon':observer_lon,
-                        'observed_cme_flank':observed_cme_flank, 'cme_params':cme_truth.parameter_array()}
-    
+        observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array()}
+
         tag = "shl_run_{:03d}".format(i)
         shl.SIR(model, cme_guess, observations, n_ens, output_dir, tag)
       
@@ -178,7 +122,7 @@ def calibrate_shw():
     
     start_time = Time('2008-06-30T00:00:00')
     
-    model = shw.setup_huxt(start_time, uniform_wind=True)
+    model = shw.setup_uniform_huxt(dt_scale=14)
     
     # Generate a "truth" CME
     base_cme = shw.get_base_cme()
@@ -207,11 +151,10 @@ def calibrate_shw():
         cme_guess = shw.perturb_cme(base_cme)
         
         # Low observational error
-        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=3, el_min=4.0, el_max=30.0)
+        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=30.0)
     
-        observations = {'t_arrive':t_arrive, 't_transit':t_transit, 'observer_lon':observer_lon,
-                        'observed_cme_flank':observed_cme_flank, 'cme_params':cme_truth.parameter_array()}
-    
+        observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array()}
+
         tag = "shw_run_{:03d}".format(i)
         shw.SIR(model, cme_guess, observations, n_ens, output_dir, tag)
       
@@ -220,7 +163,6 @@ def calibrate_shw():
     
 if __name__ == "__main__":
     
-    #experiment_uniform_wind()
     calibrate_shv()
     calibrate_shl()
     calibrate_shw()

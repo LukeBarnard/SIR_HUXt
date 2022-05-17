@@ -110,7 +110,7 @@ class Observer:
         return flank
     
     
-    def compute_synthetic_obs(self, el_spread=0.5, cadence=5, el_min=4.0, el_max=30.0):
+    def compute_synthetic_obs(self, el_spread=0.1, cadence=1, el_min=4.0, el_max=30.0):
         """
         Return synthetic observations with a specified Gaussian uncertainty spread, cadence, and maximum elongation.
         el_spread = standard deviation of random Gaussian noise added to the modelled elongation.
@@ -141,7 +141,7 @@ class Observer:
         return obs_flank
     
 
-def setup_huxt(start_time, uniform_wind=True):
+def setup_huxt(start_time, dt_scale, uniform_wind=True):
     """
     Initialise HUXt with some predetermined boundary/initial conditions
     uniform_wind is flag for setting uniform 400km/s wind.
@@ -158,8 +158,29 @@ def setup_huxt(start_time, uniform_wind=True):
     if uniform_wind:
         vr_in = np.zeros(vr_in.shape) + 400*vr_in.unit
         
+    # Set up HUXt for a 3.5 day simulation, outputting every dt_scale
     model = H.HUXt(v_boundary=vr_in, cr_num=cr_num, cr_lon_init=ert.lon_c, latitude=ert.lat.to(u.deg),
-                   lon_start=290*u.deg, lon_stop=70*u.deg, simtime=3.5*u.day, dt_scale=4)
+                   lon_start=290*u.deg, lon_stop=70*u.deg, simtime=3.5*u.day, dt_scale=dt_scale)
+    
+    return model
+
+
+def setup_uniform_huxt(dt_scale):
+    """
+    Initialise HUXt with some predetermined boundary/initial conditions
+    Here a uniform 400km/s wind is used, and HUXt time is set to 2008-01-01T00:00:00.
+    :param start_time: An astropy.Time object specifying the start time of HUXt
+    :param uniform_wind: If True, set the wind to be uniform 400km/s
+    :return:
+    """
+    start_time = Time('2008-01-01T00:00:00')
+    cr_num = np.fix(sn.carrington_rotation_number(start_time))
+    ert = H.Observer('EARTH', start_time)
+    vr_in = np.zeros(128) + 400*u.km/u.s
+    
+    # Set up HUXt for a 3.5 day simulation, outputting every dt_scale 
+    model = H.HUXt(v_boundary=vr_in, cr_num=cr_num, cr_lon_init=ert.lon_c, latitude=ert.lat.to(u.deg),
+                   lon_start=290*u.deg, lon_stop=70*u.deg, simtime=2*u.day, dt_scale=dt_scale)
     
     return model
 
@@ -205,7 +226,7 @@ def perturb_cme_longitude(lon):
     :return lon_out: Perturbed CME source longitude in degrees.
     """
     lon_spread = 5*u.deg
-    lon_out = lon + np.random.uniform(-1,1,1)*lon_spread
+    lon_out = lon + np.random.uniform(-1, 1, 1)*lon_spread
     
     # Check lon_out is between 0 and 2 pi.
     lon_out = H._zerototwopi_(lon_out.to(u.rad).value)
@@ -220,7 +241,7 @@ def perturb_cme_latitude(lat):
     :return lat_out: Perturbed CME source latitude in degrees.
     """
     lat_spread = 5*u.deg
-    lat_out = lat + np.random.uniform(-1,1,1)*lat_spread
+    lat_out = lat + np.random.uniform(-1, 1, 1)*lat_spread
     return lat_out[0]
 
 
@@ -231,7 +252,7 @@ def perturb_cme_speed(speed):
     :return speed_out: Perturbed CME initial speed in km/s.
     """
     speed_spread = 50*(u.km/u.s)
-    speed_out = speed + np.random.uniform(-1,1,1)*speed_spread
+    speed_out = speed + np.random.uniform(-1, 1, 1)*speed_spread
     return speed_out[0]
 
 
@@ -242,7 +263,7 @@ def perturb_cme_width(width):
     :return width_out: Perturbed CME angular width in degrees.
     """
     width_spread = 5*u.deg
-    width_out = width + np.random.uniform(-1,1,1)*width_spread
+    width_out = width + np.random.uniform(-1, 1, 1)*width_spread
     return width_out[0]
 
 
@@ -287,7 +308,7 @@ def initialise_cme_parameter_ensemble_arrays(n_ensemble):
     :param n_ensemble: The number of ensemble members in the SIR analysis
     :return parameter_arrays: A dictionary of parameter keys and an empty array for storing each ensemble member value
     """
-    keys = ['t_init', 'speed', 'width', 'lon', 'lat', 'thick', 'arrival', 'likelihood', 'weight']
+    keys = ['t_init', 'v', 'width', 'lon', 'lat', 'thick', 'likelihood', 'weight']
     parameter_arrays = {k:np.zeros(n_ensemble) for k in keys}
     parameter_arrays['n_members'] = n_ensemble
     return parameter_arrays
@@ -303,9 +324,7 @@ def update_analysis_file_initial_values(file_handle, cme, observations):
     """
     
     file_handle.create_dataset('cme_inital_values', data=cme.parameter_array())
-    file_handle.create_dataset('t_arrive', data=observations['t_arrive'].jd)
-    file_handle.create_dataset('t_transit', data=observations['t_transit'].value)
-    file_handle.create_dataset('cme_params', data=observations['cme_params'])
+    file_handle.create_dataset('truth_cme_params', data=observations['truth_cme_params'])
     file_handle.create_dataset('observer_lon', data=observations['observer_lon'].value)
     file_handle.create_dataset('observed_cme', data=observations['observed_cme_flank'])
     keys = observations['observed_cme_flank'].columns.to_list()
@@ -323,12 +342,11 @@ def update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_p
     """
     # Save ensemble member parameters to file
     analysis_group.create_dataset('t_launch', data=parameter_array['t_init'])
-    analysis_group.create_dataset('speed', data=parameter_array['speed'])
+    analysis_group.create_dataset('v', data=parameter_array['v'])
     analysis_group.create_dataset('lon', data=parameter_array['lon'])
     analysis_group.create_dataset('lat', data=parameter_array['lat'])
     analysis_group.create_dataset('width', data=parameter_array['width'])
     analysis_group.create_dataset('thick', data=parameter_array['thick'])
-    analysis_group.create_dataset('arrival', data=parameter_array['arrival'])
     analysis_group.create_dataset('likelihood', data=parameter_array['likelihood'])
     analysis_group.create_dataset('weight', data=parameter_array['weight'])
     analysis_group.create_dataset('ens_profiles', data=ens_profiles)
@@ -394,7 +412,7 @@ def compute_resampling(parameter_array):
     """
     
     # Pull out paramters from dict
-    v = parameter_array['speed']
+    v = parameter_array['v']
     weights = parameter_array['weight']
 
     # Remove any particles with invalid weights
@@ -430,8 +448,10 @@ def compute_resampling(parameter_array):
     lon = parameter_array['lon']
 
     for i in range(n_members):
-        t_launch = t_init[i]*u.s
+        # Resampled params
         v_new = v_resamp.ravel()[i]*(u.km/u.s)
+        # Fixed params
+        t_launch = t_init[i]*u.s
         lon_new = lon[i]*u.deg
         lat_new = lat[i]*u.deg
         wid_new = wid[i]*u.deg
@@ -447,8 +467,8 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
     Function implementing the Sequential Importance Resampling of initial CME parameters in HUXt
     :param model: A HUXt instance.
     :param cme: A ConeCME instance representing the best guess inital CME parameter values.
-    :param observations: A dictionary containing the observed CME arrival time, transit time, observer longitude and a
-                         pandas data frame of the observed CME flank elongation.
+    :param observations: A dictionary containing the observer longitude, a pandas data frame of the
+                        observed CME flank elongation, and an array of the truth CME parameters
     :param n_ens: The number of ensemble members.
     :param output_path: The full path of a directory to store the SIR analysis file
     :param tag: A string to append to output file name.
@@ -497,21 +517,19 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
             
             # Update CME parameter arrays
             parameter_array['t_init'][j] = cme_member.t_launch.value
-            parameter_array['speed'][j] = cme_member.v.value
+            parameter_array['v'][j] = cme_member.v.value
             parameter_array['lon'][j] = cme_member.longitude.to(u.deg).value
             parameter_array['lat'][j] = cme_member.latitude.to(u.deg).value
             parameter_array['width'][j] = cme_member.width.to(u.deg).value
             parameter_array['thick'][j] = cme_member.thickness.to(u.solRad).value
-            hit, t_arrive, t_transit, hit_lon, hit_id = cme_member.compute_arrival_at_body('EARTH')
-            parameter_array['arrival'][j] = t_arrive.jd
             
             # Get pseudo-observations of this ensemble member
             member_obs = Observer(model, cme_member, observer_lon) 
             
             # Plot out the ensemble member
-            fig, ax = sirplt.plot_huxt_with_observer(model.time_out[20], model, member_obs, add_flank=True, add_fov=True)
-            fig.savefig(tag + "a{:02d}_e{:02d}_v2.png".format(i, j))
-            plt.close('all')
+            #fig, ax = sirplt.plot_huxt_with_observer(model.time_out[8], model, member_obs, add_flank=True, add_fov=True)
+            #fig.savefig(tag + "a{:02d}_e{:02d}_v2.png".format(i, j))
+            #plt.close('all')
             
             # Compute the likelihood of the observation given this members time-elongation profile
             parameter_array['likelihood'][j] = compute_observation_likelihood(t_obs, e_obs, member_obs.model_flank)
@@ -526,7 +544,7 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
          
         # Compute particle weights from likelihoods
         parameter_array['weight'] = parameter_array['likelihood'] / np.nansum(parameter_array['likelihood'])
-        
+                
         # Update the output file with the ensemble parameters, weights, and time-elongation profiles at this analysis step
         update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_profiles)
         
