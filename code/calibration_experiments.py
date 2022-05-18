@@ -25,7 +25,7 @@ def calibrate_shv():
     # Test the SIR scheme
     np.random.seed(190802)
     
-    model = shv.setup_uniform_huxt(dt_scale=14)
+    model = shv.setup_uniform_huxt(dt_scale=20)
     
     # Generate a "truth" CME
     base_cme = shv.get_base_cme()
@@ -35,11 +35,11 @@ def calibrate_shv():
     cme_truth = model.cmes[0]
     
     observer_lon = -60*u.deg
-    L5Obs = shv.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=30.0)
+    L5Obs = shv.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=35.0)
     
     # Make directory to store this experiment in
     dirs = shv.get_project_dirs()
-    output_dir = 'shv_calibrate'
+    output_dir = 'shv_calibrate_v2'
     output_dir = os.path.join(dirs['sir_analysis'], output_dir)
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
@@ -53,7 +53,7 @@ def calibrate_shv():
         cme_guess = shv.perturb_cme(base_cme)
         
         # Low observational error
-        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=30.0)
+        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=35.0)
     
         observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array()}
 
@@ -73,7 +73,7 @@ def calibrate_shl():
     
     start_time = Time('2008-06-30T00:00:00')
     
-    model = shl.setup_uniform_huxt(dt_scale=14)
+    model = shl.setup_uniform_huxt(dt_scale=20)
     
     # Generate a "truth" CME
     base_cme = shl.get_base_cme()
@@ -81,14 +81,13 @@ def calibrate_shl():
     # Get HUXt solution of this truth CME, and observations from L5
     model.solve([base_cme])
     cme_truth = model.cmes[0]
-    hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
     
     observer_lon = -60*u.deg
-    L5Obs = shl.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=30.0)
+    L5Obs = shl.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=35.0)
     
     # Make directory to store this experiment in
     dirs = shl.get_project_dirs()
-    output_dir = 'shl_calibrate'
+    output_dir = 'shl_calibrate_v2'
     output_dir = os.path.join(dirs['sir_analysis'], output_dir)
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
@@ -102,7 +101,7 @@ def calibrate_shl():
         cme_guess = shl.perturb_cme(base_cme)
         
         # Low observational error
-        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=30.0)
+        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=35.0)
     
         observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array()}
 
@@ -122,7 +121,7 @@ def calibrate_shw():
     
     start_time = Time('2008-06-30T00:00:00')
     
-    model = shw.setup_uniform_huxt(dt_scale=14)
+    model = shw.setup_uniform_huxt(dt_scale=20)
     
     # Generate a "truth" CME
     base_cme = shw.get_base_cme()
@@ -130,14 +129,13 @@ def calibrate_shw():
     # Get HUXt solution of this truth CME, and observations from L5
     model.solve([base_cme])
     cme_truth = model.cmes[0]
-    hit, t_arrive, t_transit, hit_lon, hit_id = cme_truth.compute_arrival_at_body('EARTH')
     
     observer_lon = -60*u.deg
-    L5Obs = shw.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=30.0)
+    L5Obs = shw.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=35.0)
     
     # Make directory to store this experiment in
     dirs = shw.get_project_dirs()
-    output_dir = 'shw_calibrate'
+    output_dir = 'shw_calibrate_v2'
     output_dir = os.path.join(dirs['sir_analysis'], output_dir)
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
@@ -151,7 +149,7 @@ def calibrate_shw():
         cme_guess = shw.perturb_cme(base_cme)
         
         # Low observational error
-        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=30.0)
+        observed_cme_flank = L5Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=35.0)
     
         observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array()}
 
