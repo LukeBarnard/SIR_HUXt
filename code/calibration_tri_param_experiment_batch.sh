@@ -4,11 +4,11 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --threads-per-core=1
 
-#SBATCH --job-name=calibration_experiment
-#SBATCH --output=calibration_experiment_report.txt
+#SBATCH --job-name=calibration_tri_param
+#SBATCH --output=calibration_tri_param_experiment_report.txt
 
 #SBATCH --time=24:00:00
 
 module load anaconda
 source activate sir_huxt
-python calibration_experiments.py
+python calibration_tri_param_experiments.py
