@@ -36,7 +36,7 @@ def calibrate_shvwl():
     
     # Make directory to store this experiment in
     dirs = sir.get_project_dirs()
-    output_dir = 'shvwl_calibrate'
+    output_dir = 'shvwl_calibrate_v3'
     output_dir = os.path.join(dirs['sir_analysis'], output_dir)
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
