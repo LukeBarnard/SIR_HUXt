@@ -97,6 +97,20 @@ class Observer:
             numer = (r_obs**2 + s**2 - r_cme**2).value
             denom = (2.0 * r_obs * s).value
             e_obs = np.arccos(numer / denom)
+            
+            # Restrict those CME points to those in FOV
+            # For those ahead of Earth, this is negative y_cme_s
+            # For those behind Earth, this is positive y_cme_s
+            if self.lon[i] < np.pi*u.rad:
+                id_sub = y_cme_s.value < 0
+                e_obs = e_obs[id_sub]
+                lon_cme = lon_cme[id_sub]
+                r_cme = r_cme[id_sub]
+            elif self.lon[i] > np.pi*u.rad:
+                id_sub = y_cme_s.value > 0
+                e_obs = e_obs[id_sub]
+                lon_cme = lon_cme[id_sub]
+                r_cme = r_cme[id_sub]
 
             # Find the flank coordinate and update output
             id_obs_flank = np.argmax(e_obs)       
