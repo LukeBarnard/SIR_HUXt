@@ -26,8 +26,8 @@ def calibrate_structured_wind():
     stop_time = Time('2010-01-01T00:00:00')
     start_days = np.linspace(np.fix(start_time.jd), np.fix(stop_time.jd), 100)
 
-    for i in range(days.size):
-        start_time = Time(days[i], format='jd')
+    for i in range(start_days.size):
+        start_time = Time(start_days[i], format='jd')
         
         dt_scale = 20
         model = sir.setup_huxt(start_time, dt_scale, uniform_wind=False)
