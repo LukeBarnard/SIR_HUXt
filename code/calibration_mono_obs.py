@@ -12,7 +12,7 @@ from sklearn.neighbors import KernelDensity
 
 import huxt as H
 import huxt_analysis as HA
-import sir_huxt_v_width_lon as sir
+import sir_mono_obs as sir
 
 def calibrate_shvwl():
     """
