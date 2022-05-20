@@ -61,7 +61,6 @@ def calibrate_obs_lon(lon):
 
         tag = "obs_lon_run_{:03d}".format(i)
         sir.SIR(model, cme_guess, observations, n_ens, output_dir, tag)
-        break
       
     return
 
