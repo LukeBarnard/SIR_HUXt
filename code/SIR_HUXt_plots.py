@@ -17,7 +17,7 @@ import huxt_analysis as Ha
 
 
 
-def plot_huxt_with_observer(time, model, observer, add_flank=False, add_fov=False):
+def plot_huxt_with_observer(time, model, observer_list, add_flank=False, add_fov=False):
     """
     Plot the HUXt solution at a specified time, and (optionally) overlay the modelled flank location and field of view
     of a specified observer.
@@ -74,27 +74,26 @@ def plot_huxt_with_observer(time, model, observer, add_flank=False, add_fov=Fals
             cme_r = np.append(cme_r, cme_r[0])
             ax.plot(cme_lons, cme_r, '-', color=cme_colors[cid], linewidth=3, zorder=3)
             
-    #cme = model.cmes[0]
-    #ax.plot(cme.coords[id_t]['lon'], cme.coords[id_t]['r'], '-', color='darkorange', linewidth=3, zorder=3)
-    
     ert = model.get_observer('EARTH')
     ax.plot(ert.lon[id_t], ert.r[id_t], 'co', markersize=16, label='Earth')            
+    
+    cols = ['r', 'y']
+    for k, observer in enumerate(observer_list):
+        # Add on the observer
+        ax.plot(observer.lon[id_t], observer.r[id_t], 's', color=cols[k], markersize=16, label='Observer {:01d}'.format(k))
 
-    # Add on the observer
-    ax.plot(observer.lon[id_t], observer.r[id_t], 's', color='r', markersize=16, label='Observer')
-        
-    if add_flank:
-        flank_lon = observer.model_flank.loc[id_t, 'lon']
-        flank_rad = observer.model_flank.loc[id_t, 'r']
-        ax.plot(flank_lon, flank_rad, 'r.', markersize=10, zorder=4)
-        # Add observer-flank line
-        ro = observer.r[id_t]
-        lo = observer.lon[id_t]
-        ax.plot([lo.value, flank_lon], [ro.value, flank_rad], 'r--', zorder=4)
-        
-    if add_fov:
-        fov_patch = get_fov_patch(observer.r[id_t], observer.lon[id_t], observer.el_min, observer.el_max)
-        ax.add_patch(fov_patch)
+        if add_flank:
+            flank_lon = observer.model_flank.loc[id_t, 'lon']
+            flank_rad = observer.model_flank.loc[id_t, 'r']
+            ax.plot(flank_lon, flank_rad, 'r.', markersize=10, zorder=4)
+            # Add observer-flank line
+            ro = observer.r[id_t]
+            lo = observer.lon[id_t]
+            ax.plot([lo.value, flank_lon], [ro.value, flank_rad], '--', color=cols[k], zorder=4)
+
+        if add_fov:
+            fov_patch = get_fov_patch(observer.r[id_t], observer.lon[id_t], observer.el_min, observer.el_max, cols[k])
+            ax.add_patch(fov_patch)
 
     ax.set_ylim(0, 240)
     ax.set_yticklabels([])
@@ -116,13 +115,14 @@ def plot_huxt_with_observer(time, model, observer, add_flank=False, add_fov=Fals
     return fig, ax
 
 
-def get_fov_patch(ro, lo, el_min, el_max):
+def get_fov_patch(ro, lo, el_min, el_max, col):
     """
     Function to compute a matplotlib patch to higlight an observers field of view. 
     ro = radius of observer (in solRad)
     lo = longitude of observer (in rad)
     el_min = minimum elongation of the field of view
     el_max = maximum elongation of the field of view
+    col = color string 
     """
     xo = ro*np.cos(lo)
     yo = ro*np.sin(lo)
@@ -161,7 +161,7 @@ def get_fov_patch(ro, lo, el_min, el_max):
         lf = np.arctan2(yf, xf)
         fov_patch.append([lf.value, rf.value])
 
-    fov_patch = mpl.patches.Polygon(np.array(fov_patch), color='r', alpha=0.3, zorder=1)
+    fov_patch = mpl.patches.Polygon(np.array(fov_patch), color=col, alpha=0.3, zorder=1)
     return fov_patch
 
 

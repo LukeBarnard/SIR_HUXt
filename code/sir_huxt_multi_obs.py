@@ -97,7 +97,22 @@ class Observer:
             numer = (r_obs**2 + s**2 - r_cme**2).value
             denom = (2.0 * r_obs * s).value
             e_obs = np.arccos(numer / denom)
-
+            
+            
+            # Restrict those CME points to those in FOV
+            # For those ahead of Earth, this is negative y_cme_s
+            # For those behind Earth, this is positive y_cme_s
+            if self.lon[i] < np.pi*u.rad:
+                id_sub = y_cme_s.value < 0
+                e_obs = e_obs[id_sub]
+                lon_cme = lon_cme[id_sub]
+                r_cme = r_cme[id_sub]
+            elif self.lon[i] > np.pi*u.rad:
+                id_sub = y_cme_s.value > 0
+                e_obs = e_obs[id_sub]
+                lon_cme = lon_cme[id_sub]
+                r_cme = r_cme[id_sub]
+    
             # Find the flank coordinate and update output
             id_obs_flank = np.argmax(e_obs)       
             flank.loc[i, 'lon'] = lon_cme[id_obs_flank].value
@@ -316,27 +331,35 @@ def initialise_cme_parameter_ensemble_arrays(n_ensemble):
     return parameter_arrays
 
 
-def update_analysis_file_initial_values(file_handle, cme, observations):
+def update_analysis_file_initial_values(file_handle, cme, obs1, obs2):
     """
     Function to output the modelled CME initial values and the CME observations to the SIR analysis file
     :param file_handle: The HDF5 file object of the analysis file.
     :param cme: A ConeCME instance representing the best guess inital CME parameter values.
-    :param observed_cme: A pandas dataframe of observations of the CME time elongation profile.
-    :param observer_lon: The longitude of the observer relative to Earth, in degrees.
+    :param obs1: A dictionary containing the observations from Observer 1.
+    :param obs2: A dictionary containing the observations from Observer 2.
     """
     
     file_handle.create_dataset('cme_inital_values', data=cme.parameter_array())
-    file_handle.create_dataset('truth_cme_params', data=observations['truth_cme_params'])
-    file_handle.create_dataset('observer_lon', data=observations['observer_lon'].value)
-    file_handle.create_dataset('observed_cme', data=observations['observed_cme_flank'])
-    keys = observations['observed_cme_flank'].columns.to_list()
+    file_handle.create_dataset('truth_cme_params', data=obs1['truth_cme_params'])
+    
+    file_handle.create_dataset('obs1_lon', data=obs1['observer_lon'].value)
+    file_handle.create_dataset('obs1_cme', data=obs1['observed_cme_flank'])
+    keys = obs1['observed_cme_flank'].columns.to_list()
     col_names = "    ".join(keys)
-    file_handle.create_dataset('observed_cme_keys', data=col_names)
+    file_handle.create_dataset('obs1_cme_keys', data=col_names)
+    
+    file_handle.create_dataset('obs2_lon', data=obs2['observer_lon'].value)
+    file_handle.create_dataset('obs2_cme', data=obs2['observed_cme_flank'])
+    keys = obs2['observed_cme_flank'].columns.to_list()
+    col_names = "    ".join(keys)
+    file_handle.create_dataset('obs2_cme_keys', data=col_names)
+    
     file_handle.flush()
     return
 
 
-def update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_profiles):
+def update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_profiles1, ens_profiles2):
     """
     Function to output the ensemble of CME paramters, likelihoods, weights, and time-elongation profiles at this analysis step.
     :param parameter_array: Dictionary of arrays containing the CME parameters, likelihoods and weights
@@ -351,10 +374,15 @@ def update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_p
     analysis_group.create_dataset('thick', data=parameter_array['thick'])
     analysis_group.create_dataset('likelihood', data=parameter_array['likelihood'])
     analysis_group.create_dataset('weight', data=parameter_array['weight'])
-    analysis_group.create_dataset('ens_profiles', data=ens_profiles)
-    keys = ens_profiles.columns.to_list()
+    analysis_group.create_dataset('ens_profiles1', data=ens_profiles1)
+    keys = ens_profiles1.columns.to_list()
     col_names = "    ".join(keys)
-    analysis_group.create_dataset('ens_profiles_keys', data=col_names)
+    analysis_group.create_dataset('ens_profiles1_keys', data=col_names)
+    
+    analysis_group.create_dataset('ens_profiles2', data=ens_profiles2)
+    keys = ens_profiles2.columns.to_list()
+    col_names = "    ".join(keys)
+    analysis_group.create_dataset('ens_profiles2_keys', data=col_names)
     return
 
 
@@ -482,7 +510,7 @@ def compute_resampling(parameter_array):
     return resampled_cmes    
     
     
-def SIR(model, cme, observations, n_ens, output_path, tag):
+def SIR(model, cme, obs1, obs2, n_ens, output_path, tag):
     """
     Function implementing the Sequential Importance Resampling of initial CME parameters in HUXt
     :param model: A HUXt instance.
@@ -500,11 +528,14 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
     # Open file for storing SIR analysis
     out_file, out_filepath = open_SIR_output_file(output_path, tag)
     
-    observed_cme = observations['observed_cme_flank']
-    observer_lon = observations['observer_lon']
+    obs1_cme = obs1['observed_cme_flank']
+    obs1_lon = obs1['observer_lon']
+    
+    obs2_cme = obs2['observed_cme_flank']
+    obs2_lon = obs2['observer_lon']
     
     # Output the initial CME and observation data
-    update_analysis_file_initial_values(out_file, cme, observations)
+    update_analysis_file_initial_values(out_file, cme, obs1, obs2)
     
     # Generate the initial ensemble 
     cme_ensemble = generate_cme_ensemble(cme, n_ens)
@@ -517,12 +548,18 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
         analysis_group = out_file.create_group(analysis_key)
         
         # Get the observed CME flank time-elongation point
-        t_obs = observed_cme.loc[i, 'time']
-        e_obs = observed_cme.loc[i, 'el']
+        t_obs1 = obs1_cme.loc[i, 'time']
+        e_obs1 = obs1_cme.loc[i, 'el']
+        
+        t_obs2 = obs2_cme.loc[i, 'time']
+        e_obs2 = obs2_cme.loc[i, 'el']
         
         # Output the observations to file
-        analysis_group.create_dataset('t_obs', data=t_obs)
-        analysis_group.create_dataset('e_obs', data=e_obs)
+        analysis_group.create_dataset('t_obs1', data=t_obs1)
+        analysis_group.create_dataset('e_obs1', data=e_obs1)
+        
+        analysis_group.create_dataset('t_obs2', data=t_obs2)
+        analysis_group.create_dataset('e_obs2', data=e_obs2)
         
         #Preallocate space for CME parameters for each ensemble member
         parameter_array = initialise_cme_parameter_ensemble_arrays(n_ens)
@@ -544,29 +581,40 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
             parameter_array['thick'][j] = cme_member.thickness.to(u.solRad).value
             
             # Get pseudo-observations of this ensemble member
-            member_obs = Observer(model, cme_member, observer_lon) 
+            member_obs1 = Observer(model, cme_member, obs1_lon)
+            member_obs2 = Observer(model, cme_member, obs2_lon) 
             
             # Plot out the ensemble member
-            #fig, ax = sirplt.plot_huxt_with_observer(model.time_out[8], model, member_obs, add_flank=True, add_fov=True)
-            #fig.savefig(tag + "a{:02d}_e{:02d}_v2.png".format(i, j))
+            #fig, ax = sirplt.plot_huxt_with_observer(model.time_out[8], model, [member_obs1, member_obs2],
+            #                                         add_flank=True add_fov=True)
+            #fig.savefig(tag + "_a{:02d}_e{:02d}.png".format(i, j))
             #plt.close('all')
             
             # Compute the likelihood of the observation given this members time-elongation profile
-            parameter_array['likelihood'][j] = compute_observation_likelihood(t_obs, e_obs, member_obs.model_flank)
+            obs1_llhd = compute_observation_likelihood(t_obs1, e_obs1, member_obs1.model_flank)
+            obs2_llhd = compute_observation_likelihood(t_obs2, e_obs2, member_obs2.model_flank)
+            
+            parameter_array['likelihood'][j] = obs1_llhd * obs2_llhd
             
             # Collect all the ensemble time-elongation profiles together. 
             if j == 0: 
-                ens_profiles = member_obs.model_flank.copy()
-                ens_profiles.drop(columns=['r', 'lon'], inplace=True)
-                ens_profiles.rename(columns={'el': 'e_{:02d}'.format(j)}, inplace=True)
+                ens_profiles1 = member_obs1.model_flank.copy()
+                ens_profiles1.drop(columns=['r', 'lon'], inplace=True)
+                ens_profiles1.rename(columns={'el': 'e_{:02d}'.format(j)}, inplace=True)
+                
+                ens_profiles2 = member_obs2.model_flank.copy()
+                ens_profiles2.drop(columns=['r', 'lon'], inplace=True)
+                ens_profiles2.rename(columns={'el': 'e_{:02d}'.format(j)}, inplace=True)
             else:
-                ens_profiles['e_{:02d}'.format(j)] = member_obs.model_flank['el'].copy()
+                ens_profiles1['e_{:02d}'.format(j)] = member_obs1.model_flank['el'].copy()
+                
+                ens_profiles2['e_{:02d}'.format(j)] = member_obs2.model_flank['el'].copy()
          
         # Compute particle weights from likelihoods
         parameter_array['weight'] = parameter_array['likelihood'] / np.nansum(parameter_array['likelihood'])
                 
         # Update the output file with the ensemble parameters, weights, and time-elongation profiles at this analysis step
-        update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_profiles)
+        update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_profiles1, ens_profiles2)
         
         # Resample the particles based on the current weights.
         cme_ensemble = compute_resampling(parameter_array)

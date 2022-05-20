@@ -88,9 +88,13 @@ def plot(model, time, save=False, tag='', fighandle=np.nan, axhandle=np.nan,
         cme_r = cme.coords[id_t]['r'].to(u.solRad)
         if np.any(np.isfinite(cme_r)):
             # Pad out to close the profile.
-            cme_lons = np.append(cme_lons, cme_lons[0])
-            cme_r = np.append(cme_r, cme_r[0])
-            ax.plot(cme_lons, cme_r, '-', color=cme_colors[cid], linewidth=3)
+            #cme_lons = np.append(cme_lons, cme_lons[0])
+            #cme_r = np.append(cme_r, cme_r[0])
+            #ax.plot(cme_lons, cme_r, '-', color=cme_colors[cid], linewidth=3)
+            id_f = cme.coords[id_t]['front_id'] == 1
+            id_b = cme.coords[id_t]['front_id'] == 0
+            ax.plot(cme_lons[id_f], cme_r[id_f], 'o', color=cme_colors[cid], linewidth=3)
+            ax.plot(cme_lons[id_b], cme_r[id_b], '*', color='k', linewidth=3)
 
     ax.set_ylim(0, model.r.value.max())
     ax.set_yticklabels([])

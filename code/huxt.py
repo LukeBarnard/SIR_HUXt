@@ -299,9 +299,17 @@ class ConeCME:
             lon_cme = coord['lon']
             front_id = coord['front_id'] == 1.0
             r_cme = r_cme[front_id]
-            lon_cme = lon_cme[front_id]
+            lon_cme = lon_cme[front_id] - self.longitude
 
             # If there are any CME front coords, then work out pos.
+            #print('****')
+            #print(arrive_rad[i], arrive_lon[i].to(u.deg))
+            #print(self.longitude)
+            #print(r_cme)
+            #print(lon_cme.to(u.deg))
+            #print((lon_cme - self.longitude).to(u.deg))
+            #print(front_id)
+            
             if np.any(front_id):
 
                 # Handle case for HUXt run on multiple longitudes first
@@ -326,6 +334,7 @@ class ConeCME:
                         continue
 
                 # Has CME front crossed body radius
+                
                 if r_front[-1] > arrive_rad[i]:
                     hit = True
                     hit_id = i
