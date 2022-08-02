@@ -155,36 +155,11 @@ class Observer:
         return obs_flank
     
 
-def setup_huxt(start_time, dt_scale, uniform_wind=True):
-    """
-    Initialise HUXt with some predetermined boundary/initial conditions
-    uniform_wind is flag for setting uniform 400km/s wind.
-    :param start_time: An astropy.Time object specifying the start time of HUXt
-    :param uniform_wind: If True, set the wind to be uniform 400km/s
-    :return:
-    """
-    cr_num = np.fix(sn.carrington_rotation_number(start_time))
-    ert = H.Observer('EARTH', start_time)
-
-    # Set up HUXt for a 5 day simulation of this CR
-    vr_in = Hin.get_MAS_long_profile(cr_num, ert.lat.to(u.deg))
-    # Set wind to be uniform?
-    if uniform_wind:
-        vr_in = np.zeros(vr_in.shape) + 400*vr_in.unit
-        
-    # Set up HUXt for a 3.5 day simulation, outputting every dt_scale
-    model = H.HUXt(v_boundary=vr_in, cr_num=cr_num, cr_lon_init=ert.lon_c, latitude=ert.lat.to(u.deg),
-                   lon_start=290*u.deg, lon_stop=70*u.deg, simtime=3.5*u.day, dt_scale=dt_scale)
-    
-    return model
-
-
-def setup_uniform_huxt(dt_scale):
+def setup_huxt(dt_scale):
     """
     Initialise HUXt with some predetermined boundary/initial conditions
     Here a uniform 400km/s wind is used, and HUXt time is set to 2008-01-01T00:00:00.
-    :param start_time: An astropy.Time object specifying the start time of HUXt
-    :param uniform_wind: If True, set the wind to be uniform 400km/s
+    :param dt_scale: Scalar specifying cadence of output timesteps
     :return:
     """
     start_time = Time('2008-01-01T00:00:00')
@@ -196,7 +171,10 @@ def setup_uniform_huxt(dt_scale):
     model = H.HUXt(v_boundary=vr_in, cr_num=cr_num, cr_lon_init=ert.lon_c, latitude=ert.lat.to(u.deg),
                    lon_start=290*u.deg, lon_stop=70*u.deg, simtime=2*u.day, dt_scale=dt_scale)
     
-    return model
+    model1d = H.HUXt(v_boundary=vr_in, cr_num=cr_num, cr_lon_init=ert.lon_c, latitude=ert.lat.to(u.deg),
+                   lon_out=0*u.deg, simtime=5*u.day, dt_scale=4)
+    
+    return model, model1d
 
 
 def get_base_cme(v=1000, lon=0, lat=0, width=35, thickness=1):
@@ -324,7 +302,7 @@ def initialise_cme_parameter_ensemble_arrays(n_ensemble):
     :param n_ensemble: The number of ensemble members in the SIR analysis
     :return parameter_arrays: A dictionary of parameter keys and an empty array for storing each ensemble member value
     """
-    keys = ['t_init', 'v', 'width', 'lon', 'lat', 'thick', 'likelihood', 'weight']
+    keys = ['t_init', 'v', 'width', 'lon', 'lat', 'thick', 't_transit', 'v_hit', 'likelihood', 'weight']
     parameter_arrays = {k:np.zeros(n_ensemble) for k in keys}
     parameter_arrays['n_members'] = n_ensemble
     return parameter_arrays
@@ -341,6 +319,8 @@ def update_analysis_file_initial_values(file_handle, cme, observations):
     
     file_handle.create_dataset('cme_inital_values', data=cme.parameter_array())
     file_handle.create_dataset('truth_cme_params', data=observations['truth_cme_params'])
+    file_handle.create_dataset('t_transit', data=observations['t_transit'])
+    file_handle.create_dataset('v_hit', data=observations['v_hit'])
     file_handle.create_dataset('observer_lon', data=observations['observer_lon'].value)
     file_handle.create_dataset('observed_cme', data=observations['observed_cme_flank'])
     keys = observations['observed_cme_flank'].columns.to_list()
@@ -363,6 +343,8 @@ def update_analysis_file_ensemble_members(analysis_group, parameter_array, ens_p
     analysis_group.create_dataset('lat', data=parameter_array['lat'])
     analysis_group.create_dataset('width', data=parameter_array['width'])
     analysis_group.create_dataset('thick', data=parameter_array['thick'])
+    analysis_group.create_dataset('t_transit', data=parameter_array['t_transit'])
+    analysis_group.create_dataset('v_hit', data=parameter_array['v_hit'])
     analysis_group.create_dataset('likelihood', data=parameter_array['likelihood'])
     analysis_group.create_dataset('weight', data=parameter_array['weight'])
     analysis_group.create_dataset('ens_profiles', data=ens_profiles)
@@ -496,7 +478,7 @@ def compute_resampling(parameter_array):
     return resampled_cmes    
     
     
-def SIR(model, cme, observations, n_ens, output_path, tag):
+def SIR(model, model1d, cme, observations, n_ens, output_path, tag):
     """
     Function implementing the Sequential Importance Resampling of initial CME parameters in HUXt
     :param model: A HUXt instance.
@@ -546,8 +528,18 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
             
             # Run HUXt using this cme ensemble member
             model.solve([cme_ensemble[j]])
-            
             cme_member = model.cmes[0]
+            
+            # Also do 1D hi-res run for arrival time calculations
+            if (i == 0) | (i == (n_analysis_steps - 1)):
+                model1d.solve([cme_ensemble[j]])
+                cme_arr = model1d.cmes[0]
+                arrival_stats = cme_arr.compute_arrival_at_body('EARTH')
+                t_transit = arrival_stats['t_transit']
+                v_hit = arrival_stats['v']
+            else:
+                t_transit = np.NaN*u.s
+                v_hit = np.NaN*u.km/u.s
             
             # Update CME parameter arrays
             parameter_array['t_init'][j] = cme_member.t_launch.value
@@ -556,6 +548,8 @@ def SIR(model, cme, observations, n_ens, output_path, tag):
             parameter_array['lat'][j] = cme_member.latitude.to(u.deg).value
             parameter_array['width'][j] = cme_member.width.to(u.deg).value
             parameter_array['thick'][j] = cme_member.thickness.to(u.solRad).value
+            parameter_array['t_transit'][j] = t_transit.to(u.s).value
+            parameter_array['v_hit'][j] = v_hit.value
             
             # Get pseudo-observations of this ensemble member
             member_obs = Observer(model, cme_member, observer_lon) 

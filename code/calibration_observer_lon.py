@@ -22,7 +22,7 @@ def calibrate_obs_lon(lon):
     # Test the SIR scheme
     np.random.seed(19079502)
     
-    model = sir.setup_uniform_huxt(dt_scale=20)
+    model, model1d = sir.setup_huxt(dt_scale=20)
     
     # Generate a "truth" CME
     base_cme = sir.get_base_cme()
@@ -30,6 +30,18 @@ def calibrate_obs_lon(lon):
     # Get HUXt solution of this truth CME, and observations
     model.solve([base_cme])
     cme_truth = model.cmes[0]
+    
+    # Also do hi-res 1d run for arrival time at Earth
+    model1d.solve([cme_ensemble[j]])
+    cme_arr = model1d.cmes[0]
+    arrival_stats = cme_arr.compute_arrival_at_body('EARTH')
+    hit = arrival_stats['hit']
+    if arrival_stats['hit']:
+        t_transit = arrival_stats['t_transit'].to(u.s).value
+        v_hit = arrival_stats['v'].value
+    else:
+        t_transit = np.NaN
+        v_hit = np.NaN
     
     observer_lon = lon*u.deg
     Obs = sir.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=35.0)
@@ -57,17 +69,20 @@ def calibrate_obs_lon(lon):
         # Low observational error
         observed_cme_flank = Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=35.0)
     
-        observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array()}
+        observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array(), 't_transit':t_transit, 'v_hit':v_hit}
 
         tag = "obs_lon_run_{:03d}".format(i)
-        sir.SIR(model, cme_guess, observations, n_ens, output_dir, tag)
+        sir.SIR(model, model1d, cme_guess, observations, n_ens, output_dir, tag)
       
     return
 
     
 if __name__ == "__main__":
     
+    calibrate_obs_lon(-60)
+    calibrate_obs_lon(-50)
     calibrate_obs_lon(-40)
+    calibrate_obs_lon(-30)
     calibrate_obs_lon(-20)
    
     
