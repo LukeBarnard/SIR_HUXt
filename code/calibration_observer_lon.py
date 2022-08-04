@@ -32,7 +32,7 @@ def calibrate_obs_lon(lon):
     cme_truth = model.cmes[0]
     
     # Also do hi-res 1d run for arrival time at Earth
-    model1d.solve([cme_ensemble[j]])
+    model1d.solve([base_cme])
     cme_arr = model1d.cmes[0]
     arrival_stats = cme_arr.compute_arrival_at_body('EARTH')
     hit = arrival_stats['hit']
