@@ -14,7 +14,7 @@ import huxt as H
 import huxt_analysis as HA
 import sir_huxt_mono_obs as sir
 
-def calibrate_obs_lon(lon):
+def calibration_osse(observer_lon, scenario):
     """
     Run the SIR scheme repeatedly for guesses at one truth CME and different realisations of noise added to the observations.
     Use a uniform solar wind background.
@@ -25,7 +25,7 @@ def calibrate_obs_lon(lon):
     model, model1d = sir.setup_huxt(dt_scale=20)
     
     # Generate a "truth" CME
-    base_cme = sir.get_base_cme()
+    base_cme = sir.get_cme_scenario(model, scenario)
     
     # Get HUXt solution of this truth CME, and observations
     model.solve([base_cme])
@@ -53,7 +53,7 @@ def calibrate_obs_lon(lon):
     else:
         lon_out = lon
         
-    output_dir = 'obs_lon_{:03d}'.format(lon_out)
+    output_dir = 'obs_lon_{:03d}_cme_{}'.format(lon_out, scenario)
     output_dir = os.path.join(dirs['sir_analysis'], output_dir)
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
@@ -71,7 +71,7 @@ def calibrate_obs_lon(lon):
     
         observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array(), 't_transit':t_transit, 'v_hit':v_hit}
 
-        tag = "obs_lon_run_{:03d}".format(i)
+        tag = "run_{:03d}".format(i)
         sir.SIR(model, model1d, cme_guess, observations, n_ens, output_dir, tag)
       
     return
@@ -79,12 +79,9 @@ def calibrate_obs_lon(lon):
     
 if __name__ == "__main__":
     
-    calibrate_obs_lon(-60)
-    calibrate_obs_lon(-50)
-    calibrate_obs_lon(-40)
-    calibrate_obs_lon(-30)
-    calibrate_obs_lon(-20)
-   
+    calibration_osse(-60, 'average')
+    calibration_osse(-60, 'fast')
+    
     
     
     

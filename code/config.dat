@@ -6,3 +6,5 @@ test_data,data/test_data
 example_inputs,data/example_inputs
 sir_analysis,data/sir_analysis
 figures,figures
+HELCATS_data,data/KINCAT_WP3_V02.txt
+out_data,data/out_data

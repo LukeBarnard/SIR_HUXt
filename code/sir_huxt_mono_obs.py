@@ -193,6 +193,24 @@ def get_base_cme(v=1000, lon=0, lat=0, width=35, thickness=1):
     return cme
 
 
+def get_cme_scenario(model, scenario):
+    """
+    Return the base CME, which is used to establish the pseudo-truth CME and the SIR ensemble
+    :param model: A HUXt instance.
+    :param scenario: String, 'Average', 'Fast', or 'Extreme'
+    :return: ConeCME object
+    """
+    scenarios = load_cme_scenarios()
+    
+    v = scenarios[scenario]['speed']
+    width = scenarios[scenario]['width']
+    lat = model.latitude.to(u.deg)
+    t_launch = (1*u.hr).to(u.s)
+    cme = H.ConeCME(t_launch=t_launch, longitude=0*u.deg, latitude=lat, width=width, v=v,
+                    thickness=1*u.solRad)
+    return cme
+
+
 def perturb_cme(cme):
     """
     Perturb a ConeCME's parameters according to each parameters perturbation function.
@@ -609,7 +627,7 @@ def get_project_dirs():
 
         # Just check the directories exist.
         for key, val in dirs.items():
-                if key == 'ephemeris':
+                if key in ['ephemeris', 'HELCATS_data']:
                     if not os.path.isfile(val):
                         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), val)
                 else:
@@ -619,3 +637,63 @@ def get_project_dirs():
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), config_file)
                 
     return dirs
+
+
+def build_cme_scenarios():
+    """
+    Function to build the average, fast, and extreme CME scenarios used in the modelling.
+    These are built from the percentiles of CME speed and width distributions of the 
+    HELCATS GCS fits in WP3 KINCAT (https://www.helcats-fp7.eu/catalogues/wp3_kincat.html)
+    """
+    project_dirs = get_project_dirs()
+    column_names = ['ID', 'pre_date', 'pre_time', 'last_date', 'last_time', 'carlon',
+                    'stolon', 'stolat', 'tilt', 'ssprat', 'h_angle', 'speed',  'mass']
+    data = pd.read_csv(project_dirs['HELCATS_data'], names=column_names, skiprows=4, delim_whitespace=True)
+
+    # Compute the CME scenarios using the percentiles of the speed and half angle distributions
+    scenario_percentiles = {'average': 0.5, 'fast': 0.85, 'extreme': 0.95}
+
+    # Setup output file. Overwrite if exists.
+    out_filepath = os.path.join(project_dirs['out_data'], "CME_scenarios.hdf5")
+    if os.path.isfile(out_filepath):
+        print("Warning: {} already exists. Overwriting".format(out_filepath))
+        os.remove(out_filepath)
+
+    out_file = h5py.File(out_filepath, 'w')
+
+    # Iter through scenarios and save CME properties to outfile                                         
+    for key, percentile in scenario_percentiles.items():
+
+        speed = data['speed'].quantile(percentile)
+        width = 2*data['h_angle'].quantile(percentile)
+
+        cme_group = out_file.create_group(key)
+        cme_group.create_dataset('percentile', data=percentile)                              
+        dset = cme_group.create_dataset('speed', data=speed)
+        dset.attrs['unit'] = (u.km/u.s).to_string()
+        dset = cme_group.create_dataset('width', data=width)
+        dset.attrs['unit'] = u.deg.to_string()
+
+
+    out_file.close()
+    return
+
+
+def load_cme_scenarios():
+    """
+    Load in the CME scenarios from their HDF5 file and return them in a dictionary.
+    """
+    
+    project_dirs = get_project_dirs()
+    datafile_path = os.path.join(project_dirs['out_data'], 'CME_scenarios.hdf5')
+    datafile = h5py.File(datafile_path, 'r')
+    cme_scenarios = {}
+    for key in datafile.keys():
+        cme = datafile[key]
+        speed = cme['speed'][()] * u.Unit(cme['speed'].attrs['unit'])
+        width = cme['width'][()] * u.Unit(cme['width'].attrs['unit'])
+        cme_scenarios[key] = {'speed': speed, 'width': width}
+
+    datafile.close()
+    
+    return cme_scenarios

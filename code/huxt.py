@@ -1382,7 +1382,7 @@ def _setup_dirs_():
 
         # Just check the directories exist.
         for key, val in dirs.items():
-            if key == 'ephemeris':
+            if key in ['ephemeris', 'HELCATS_data']:
                 if not os.path.isfile(val):
                     raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), val)
             else:
