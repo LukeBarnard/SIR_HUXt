@@ -43,15 +43,14 @@ def calibration_osse(observer_lon, scenario):
         t_transit = np.NaN
         v_hit = np.NaN
     
-    observer_lon = lon*u.deg
-    Obs = sir.Observer(model, cme_truth, observer_lon, el_min=4.0, el_max=35.0)
+    Obs = sir.Observer(model, cme_truth, observer_lon*u.deg, el_min=4.0, el_max=35.0)
     
     # Make directory to store this experiment in
     dirs = sir.get_project_dirs()
     if lon < 0:
-        lon_out = lon + 360
+        lon_out = observer_lon + 360
     else:
-        lon_out = lon
+        lon_out = observer_lon
         
     output_dir = 'obs_lon_{:03d}_cme_{}'.format(lon_out, scenario)
     output_dir = os.path.join(dirs['sir_analysis'], output_dir)
@@ -69,7 +68,7 @@ def calibration_osse(observer_lon, scenario):
         # Low observational error
         observed_cme_flank = Obs.compute_synthetic_obs(el_spread=0.1, cadence=1, el_min=4.0, el_max=35.0)
     
-        observations = {'observer_lon':observer_lon, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array(), 't_transit':t_transit, 'v_hit':v_hit}
+        observations = {'observer_lon':observer_lon*u.deg, 'observed_cme_flank':observed_cme_flank, 'truth_cme_params':cme_truth.parameter_array(), 't_transit':t_transit, 'v_hit':v_hit}
 
         tag = "run_{:03d}".format(i)
         sir.SIR(model, model1d, cme_guess, observations, n_ens, output_dir, tag)
