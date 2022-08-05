@@ -47,7 +47,7 @@ def calibration_osse(observer_lon, scenario):
     
     # Make directory to store this experiment in
     dirs = sir.get_project_dirs()
-    if lon < 0:
+    if observer_lon < 0:
         lon_out = observer_lon + 360
     else:
         lon_out = observer_lon
