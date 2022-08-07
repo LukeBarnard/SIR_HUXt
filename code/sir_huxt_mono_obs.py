@@ -263,7 +263,7 @@ def perturb_cme_speed(speed):
     :param speed: CME initial speed in km/s.
     :return speed_out: Perturbed CME initial speed in km/s.
     """
-    speed_spread = 50*(u.km/u.s)
+    speed_spread = 0.1 * speed #set speed spread to 10% of speed
     speed_out = speed + np.random.uniform(-1, 1, 1)*speed_spread
     return speed_out[0]
 

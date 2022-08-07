@@ -81,6 +81,9 @@ if __name__ == "__main__":
     calibration_osse(-60, 'average')
     calibration_osse(-60, 'fast')
     
+    calibration_osse(-50, 'average')
+    calibration_osse(-50, 'fast')
+    
     
     
     
