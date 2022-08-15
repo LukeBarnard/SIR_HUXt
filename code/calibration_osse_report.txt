@@ -1,0 +1,2 @@
+Running average scenario at -90 observer longitude
+Running fast scenario at -90 observer longitude

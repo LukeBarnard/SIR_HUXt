@@ -78,12 +78,13 @@ def calibration_osse(observer_lon, scenario):
     
 if __name__ == "__main__":
     
-    calibration_osse(-60, 'average')
-    calibration_osse(-60, 'fast')
-    
-    calibration_osse(-50, 'average')
-    calibration_osse(-50, 'fast')
-    
-    
-    
+    #lons = [-90, -80, -70, -60, -50, -40, -30, -20]
+    lons = [-90]
+    scenarios = ['average', 'fast']
+    for lon in lons:
+        for scenario in scenarios:
+            print("Running {} scenario at {} observer longitude".format(scenario, lon))
+            calibration_osse(lon, scenario)
+            
+            
     
