@@ -326,21 +326,24 @@ def initialise_cme_parameter_ensemble_arrays(n_ensemble):
     return parameter_arrays
 
 
-def update_analysis_file_initial_values(file_handle, cme, observations):
+def update_analysis_file_initial_values(file_handle, cme, observations, deterministic_run):
     """
     Function to output the modelled CME initial values and the CME observations to the SIR analysis file
     :param file_handle: The HDF5 file object of the analysis file.
     :param cme: A ConeCME instance representing the best guess inital CME parameter values.
-    :param observed_cme: A pandas dataframe of observations of the CME time elongation profile.
-    :param observer_lon: The longitude of the observer relative to Earth, in degrees.
+    :param observations: Dictionary containing observations of the true CME
+    :param deterministic_run: Dictionary containing arrival time and speed stats for deterministic run
+                             of best-guess CME conditions
     """
     
     file_handle.create_dataset('cme_inital_values', data=cme.parameter_array())
     file_handle.create_dataset('truth_cme_params', data=observations['truth_cme_params'])
-    file_handle.create_dataset('t_transit', data=observations['t_transit'])
-    file_handle.create_dataset('v_hit', data=observations['v_hit'])
+    file_handle.create_dataset('t_transit_truth', data=observations['t_transit'])
+    file_handle.create_dataset('v_hit_truth', data=observations['v_hit'])
     file_handle.create_dataset('observer_lon', data=observations['observer_lon'].value)
     file_handle.create_dataset('observed_cme', data=observations['observed_cme_flank'])
+    file_handle.create_dataset('t_transit_det', data=deterministic_run['t_transit'])
+    file_handle.create_dataset('v_hit_det', data=deterministic_run['v'])
     keys = observations['observed_cme_flank'].columns.to_list()
     col_names = "    ".join(keys)
     file_handle.create_dataset('observed_cme_keys', data=col_names)
@@ -517,8 +520,15 @@ def SIR(model, model1d, cme, observations, n_ens, output_path, tag):
     observed_cme = observations['observed_cme_flank']
     observer_lon = observations['observer_lon']
     
+    # Compute deterministic run
+    model1d.solve([cme])
+    cme_det = model1d.cmes[0]
+    deterministic_run = cme_det.compute_arrival_at_body('EARTH')
+    deterministic_run['t_transit'] = deterministic_run['t_transit'].to(u.s).value
+    deterministic_run['v'] = deterministic_run['v'].value
+    
     # Output the initial CME and observation data
-    update_analysis_file_initial_values(out_file, cme, observations)
+    update_analysis_file_initial_values(out_file, cme, observations, deterministic_run)
     
     # Generate the initial ensemble 
     cme_ensemble = generate_cme_ensemble(cme, n_ens)
@@ -549,15 +559,11 @@ def SIR(model, model1d, cme, observations, n_ens, output_path, tag):
             cme_member = model.cmes[0]
             
             # Also do 1D hi-res run for arrival time calculations
-            if (i == 0) | (i == (n_analysis_steps - 1)):
-                model1d.solve([cme_ensemble[j]])
-                cme_arr = model1d.cmes[0]
-                arrival_stats = cme_arr.compute_arrival_at_body('EARTH')
-                t_transit = arrival_stats['t_transit']
-                v_hit = arrival_stats['v']
-            else:
-                t_transit = np.NaN*u.s
-                v_hit = np.NaN*u.km/u.s
+            model1d.solve([cme_ensemble[j]])
+            cme_arr = model1d.cmes[0]
+            arrival_stats = cme_arr.compute_arrival_at_body('EARTH')
+            t_transit = arrival_stats['t_transit']
+            v_hit = arrival_stats['v']
             
             # Update CME parameter arrays
             parameter_array['t_init'][j] = cme_member.t_launch.value
@@ -573,9 +579,9 @@ def SIR(model, model1d, cme, observations, n_ens, output_path, tag):
             member_obs = Observer(model, cme_member, observer_lon) 
             
             # Plot out the ensemble member
-            #fig, ax = sirplt.plot_huxt_with_observer(model.time_out[8], model, [member_obs], add_flank=True, add_fov=True)
-            #fig.savefig(tag + "a{:02d}_e{:02d}_v2.png".format(i, j))
-            #plt.close('all')
+            fig, ax = sirplt.plot_huxt_with_observer(model.time_out[8], model, [member_obs], add_flank=True, add_fov=True)
+            fig.savefig(tag + "a{:02d}_e{:02d}.png".format(i, j))
+            plt.close('all')
             
             # Compute the likelihood of the observation given this members time-elongation profile
             parameter_array['likelihood'][j] = compute_observation_likelihood(t_obs, e_obs, member_obs.model_flank)

@@ -78,13 +78,11 @@ def calibration_osse(observer_lon, scenario):
     
 if __name__ == "__main__":
     
-    #lons = [-90, -80, -70, -60, -50, -40, -30, -20]
-    lons = [-90]
-    scenarios = ['average', 'fast']
-    for lon in lons:
-        for scenario in scenarios:
-            print("Running {} scenario at {} observer longitude".format(scenario, lon))
-            calibration_osse(lon, scenario)
-            
+    lons = [-90, -80, -70, -60, -50, -40, -30, -20]
+    scenarios = sir.load_cme_scenarios()
+    for scenario_key in scenarios.keys():
+        for lon in lons:
+            print("Running {} scenario at {} observer longitude".format(scenario_key, lon))
+            calibration_osse(lon, scenario_key)            
             
     
