@@ -579,9 +579,9 @@ def SIR(model, model1d, cme, observations, n_ens, output_path, tag):
             member_obs = Observer(model, cme_member, observer_lon) 
             
             # Plot out the ensemble member
-            fig, ax = sirplt.plot_huxt_with_observer(model.time_out[8], model, [member_obs], add_flank=True, add_fov=True)
-            fig.savefig(tag + "a{:02d}_e{:02d}.png".format(i, j))
-            plt.close('all')
+            #fig, ax = sirplt.plot_huxt_with_observer(model.time_out[8], model, [member_obs], add_flank=True, add_fov=True)
+            #fig.savefig(tag + "a{:02d}_e{:02d}.png".format(i, j))
+            #plt.close('all')
             
             # Compute the likelihood of the observation given this members time-elongation profile
             parameter_array['likelihood'][j] = compute_observation_likelihood(t_obs, e_obs, member_obs.model_flank)
