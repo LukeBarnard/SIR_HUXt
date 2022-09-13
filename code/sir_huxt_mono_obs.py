@@ -16,7 +16,7 @@ from sklearn.neighbors import KernelDensity
 import huxt as H
 import huxt_inputs as Hin
 import huxt_analysis as Ha
-import SIR_HUXt_plots as sirplt
+import sir_huxt_plots as sirplt
 
 
 class Observer:
@@ -656,8 +656,8 @@ def build_cme_scenarios():
                     'stolon', 'stolat', 'tilt', 'ssprat', 'h_angle', 'speed',  'mass']
     data = pd.read_csv(project_dirs['HELCATS_data'], names=column_names, skiprows=4, delim_whitespace=True)
 
-    # Compute the CME scenarios using the percentiles of the speed and half angle distributions
-    scenario_percentiles = {'average': 0.5, 'fast': 0.85, 'extreme': 0.95}
+    speed_percentiles = {'slow': 0.5, 'fast': 0.85}
+    width_percentiles = {'narrow': 0.5, 'wide': 0.85}
 
     # Setup output file. Overwrite if exists.
     out_filepath = os.path.join(project_dirs['out_data'], "CME_scenarios.hdf5")
@@ -667,18 +667,20 @@ def build_cme_scenarios():
 
     out_file = h5py.File(out_filepath, 'w')
 
-    # Iter through scenarios and save CME properties to outfile                                         
-    for key, percentile in scenario_percentiles.items():
+    for vkey, vp in speed_percentiles.items():
+        speed = data['speed'].quantile(vp)
 
-        speed = data['speed'].quantile(percentile)
-        width = 2*data['h_angle'].quantile(percentile)
+        for wkey, wp in width_percentiles.items():
 
-        cme_group = out_file.create_group(key)
-        cme_group.create_dataset('percentile', data=percentile)                              
-        dset = cme_group.create_dataset('speed', data=speed)
-        dset.attrs['unit'] = (u.km/u.s).to_string()
-        dset = cme_group.create_dataset('width', data=width)
-        dset.attrs['unit'] = u.deg.to_string()
+            width = 2*data['h_angle'].quantile(wp)
+
+            cme_group = out_file.create_group("{}_{}".format(vkey, wkey))
+            cme_group.create_dataset('speed_percentile', data=vp)                              
+            cme_group.create_dataset('width_percentile', data=wp)                              
+            dset = cme_group.create_dataset('speed', data=speed)
+            dset.attrs['unit'] = (u.km/u.s).to_string()
+            dset = cme_group.create_dataset('width', data=width)
+            dset.attrs['unit'] = u.deg.to_string()
 
 
     out_file.close()

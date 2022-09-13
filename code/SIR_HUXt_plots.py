@@ -16,8 +16,91 @@ import huxt_inputs as Hin
 import huxt_analysis as Ha
 
 
+def plot_huxt_multi(ax, time, model):
+    """
+    Plot the HUXt solution at a specified time, and (optionally) overlay the modelled flank location and field of view
+    of a specified observer.
+    :param ax: Axes handle to plot in.
+    :param time: The time to plot. The closest value in model.time_out is selected.
+    :param model: A HUXt instance with the solution in.
+    :return:
+    """
+    id_t = np.argmin(np.abs(model.time_out - time))
 
-def plot_huxt_with_observer(time, model, observer_list, add_flank=False, add_fov=False):
+    # Get plotting data
+    lon_arr, dlon, nlon = H.longitude_grid()
+    lon, rad = np.meshgrid(lon_arr.value, model.r.value)
+    mymap = mpl.cm.viridis
+    v_sub = model.v_grid.value[id_t, :, :].copy()
+    # Insert into full array
+    if lon_arr.size != model.lon.size:
+        v = np.zeros((model.nr, nlon)) * np.NaN
+        if model.lon.size != 1:
+            for i, lo in enumerate(model.lon):
+                id_match = np.argwhere(lon_arr == lo)[0][0]
+                v[:, id_match] = v_sub[:, i]
+        else:
+            print('Warning: Trying to contour single radial solution will fail.')
+    else:
+        v = v_sub
+
+    # Pad out to fill the full 2pi of contouring
+    pad = lon[:, 0].reshape((lon.shape[0], 1)) + model.twopi
+    lon = np.concatenate((lon, pad), axis=1)
+    pad = rad[:, 0].reshape((rad.shape[0], 1))
+    rad = np.concatenate((rad, pad), axis=1)
+    pad = v[:, 0].reshape((v.shape[0], 1))
+    v = np.concatenate((v, pad), axis=1)
+
+    mymap.set_over('lightgrey')
+    mymap.set_under([0, 0, 0])
+    levels = np.arange(200, 800 + 10, 10)
+    cnt = ax.contourf(lon, rad, v, levels=levels, cmap=mymap, extend='both')
+    # Remove edgelines that appear in pdfs
+    for c in cnt.collections:
+        c.set_edgecolor("face")
+
+    cme_colors = ['r', 'c', 'm', 'y', 'deeppink', 'darkorange']
+    for j, cme in enumerate(model.cmes):
+        cid = np.mod(j, len(cme_colors))
+        cme_lons = cme.coords[id_t]['lon']
+        cme_r = cme.coords[id_t]['r'].to(u.solRad)
+        if np.any(np.isfinite(cme_r)):
+            # Pad out to close the profile.
+            cme_lons = np.append(cme_lons, cme_lons[0])
+            cme_r = np.append(cme_r, cme_r[0])
+            ax.plot(cme_lons, cme_r, '-', color=cme_colors[cid], linewidth=3)
+
+    bodies = HA.get_body_styles()
+    # Don't want STA or STB in these plots, so:
+    bodies.pop('STA')
+    bodies.pop('STB')
+    bodies.pop('VENUS')
+    bodies.pop('MERCURY')
+    
+    # Add on observers 
+    for body, style in bodies.items():
+        obs = model.get_observer(body)
+        deltalon = 0.0*u.rad
+        if model.frame == 'sidereal':
+            earth_pos = model.get_observer('EARTH')
+            deltalon = earth_pos.lon_hae[id_t] - earth_pos.lon_hae[0]
+
+        obslon = H._zerototwopi_(obs.lon[id_t] + deltalon)
+
+        if body == 'EARTH':
+            ax.plot(obslon, obs.r[id_t], style['marker'], color=style['color'], markersize=16, label=body)
+        elif (obs.r[id_t] > model.r.min()) & (obs.r[id_t] < model.r.max()):
+            ax.plot(obslon, obs.r[id_t],  style['marker'], color=style['color'], markersize=16, label=body)
+
+    ax.set_ylim(0, model.r.value.max())
+    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+    ax.patch.set_facecolor('slategrey')
+    return
+
+
+def plot_huxt_with_observer(model, time, observer_list, fighandle=np.NaN, axhandle=np.NaN, add_flank=False, add_fov=False):
     """
     Plot the HUXt solution at a specified time, and (optionally) overlay the modelled flank location and field of view
     of a specified observer.
@@ -28,6 +111,11 @@ def plot_huxt_with_observer(time, model, observer_list, add_flank=False, add_fov
     :param add_fov: If True, highlight the observers field of view.
     :return:
     """
+    
+    plotvmin = 200
+    plotvmax = 810
+    dv = 10
+    ylab = "Solar Wind Speed (km/s)"
     
     id_t = np.argmin(np.abs(model.time_out - time))
 
@@ -59,7 +147,14 @@ def plot_huxt_with_observer(time, model, observer_list, add_flank=False, add_fov
     mymap.set_over('lightgrey')
     mymap.set_under([0, 0, 0])
     levels = np.arange(200, 800 + 10, 10)
-    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={"projection": "polar"})
+    
+    
+    if isinstance(fighandle, float):
+        fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={"projection": "polar"})
+    else:
+        fig = fighandle
+        ax = axhandle
+    
     cnt = ax.contourf(lon, rad, v, levels=levels, cmap=mymap, extend='both')
 
     # Add on CME boundaries and Observer
@@ -77,22 +172,22 @@ def plot_huxt_with_observer(time, model, observer_list, add_flank=False, add_fov
     ert = model.get_observer('EARTH')
     ax.plot(ert.lon[id_t], ert.r[id_t], 'co', markersize=16, label='Earth')            
     
-    cols = ['r', 'y']
+    col = 'tab:red'
     for k, observer in enumerate(observer_list):
         # Add on the observer
-        ax.plot(observer.lon[id_t], observer.r[id_t], 's', color=cols[k], markersize=16, label='Observer {:01d}'.format(k))
+        ax.plot(observer.lon[id_t], observer.r[id_t], 's', color=col, markersize=16, label='Observer {:01d}'.format(k))
 
         if add_flank:
             flank_lon = observer.model_flank.loc[id_t, 'lon']
             flank_rad = observer.model_flank.loc[id_t, 'r']
-            ax.plot(flank_lon, flank_rad, 'r.', markersize=10, zorder=4)
+            ax.plot(flank_lon, flank_rad, '.', color=col, markersize=10, zorder=4)
             # Add observer-flank line
             ro = observer.r[id_t]
             lo = observer.lon[id_t]
-            ax.plot([lo.value, flank_lon], [ro.value, flank_rad], '--', color=cols[k], zorder=4)
+            ax.plot([lo.value, flank_lon], [ro.value, flank_rad], '--', color=col, zorder=4)
 
         if add_fov:
-            fov_patch = get_fov_patch(observer.r[id_t], observer.lon[id_t], observer.el_min, observer.el_max, cols[k])
+            fov_patch = get_fov_patch(observer.r[id_t], observer.lon[id_t], observer.el_min, observer.el_max, col)
             ax.add_patch(fov_patch)
 
     ax.set_ylim(0, 240)
@@ -100,8 +195,6 @@ def plot_huxt_with_observer(time, model, observer_list, add_flank=False, add_fov
     ax.set_xticklabels([])
     ax.patch.set_facecolor('slategrey')
 
-    fig.subplots_adjust(left=0.05, bottom=0.16, right=0.95, top=0.99)
-    # Add color bar
     pos = ax.get_position()
     dw = 0.005
     dh = 0.045
@@ -110,8 +203,16 @@ def plot_huxt_with_observer(time, model, observer_list, add_flank=False, add_fov
     wid = pos.width - 2 * dw
     cbaxes = fig.add_axes([left, bottom, wid, 0.03])
     cbar1 = fig.colorbar(cnt, cax=cbaxes, orientation='horizontal')
-    cbar1.set_label('Solar Wind speed (km/s)')
-    cbar1.set_ticks(np.arange(200, 810, 100))
+    cbar1.set_label(ylab)
+    cbar1.set_ticks(np.arange(plotvmin, plotvmax, dv*10))
+
+    # Add label
+    label = "   Time: {:3.2f} days".format(model.time_out[id_t].to(u.day).value)
+    ax.text(0.725, 0.0, label, fontsize=16, transform=ax.transAxes)
+
+    label = "HUXt2D"
+    ax.text(0.1, 0.0, label, fontsize=16, transform=ax.transAxes)
+
     return fig, ax
 
 
