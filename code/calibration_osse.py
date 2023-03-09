@@ -1,5 +1,7 @@
 import os
 import glob
+import itertools
+import multiprocessing
 
 from astropy.time import Time
 import astropy.units as u
@@ -14,13 +16,16 @@ import huxt as H
 import huxt_analysis as HA
 import sir_huxt_mono_obs as sir
 
-def calibration_osse(observer_lon, scenario):
+def calibration_osse(params):
     """
-    Run the SIR scheme repeatedly for guesses at one truth CME and different realisations of noise added to the observations.
+    Run the SIR scheme repeatedly for guesses at one truth CME and different realisations of noise added to the     
+    observations.
     Use a uniform solar wind background.
     """ 
-    # Test the SIR scheme
-    np.random.seed(19079502)
+    scenario = params[0]
+    observer_lon = params[1]
+    
+    print("Running {} scenario at {} observer longitude".format(scenario, observer_lon))
     
     model, model1d = sir.setup_huxt(dt_scale=20)
     
@@ -52,7 +57,7 @@ def calibration_osse(observer_lon, scenario):
     else:
         lon_out = observer_lon
         
-    output_dir = 'obs_lon_{:03d}_cme_{}'.format(lon_out, scenario)
+    output_dir = 'obs_lon_{:03d}_cme_{}_final'.format(lon_out, scenario)
     output_dir = os.path.join(dirs['sir_analysis'], output_dir)
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
@@ -77,12 +82,17 @@ def calibration_osse(observer_lon, scenario):
 
     
 if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn')
     
-
     lons = [-90, -80, -70, -60, -50, -40, -30, -20]
     scenarios = sir.load_cme_scenarios()
-    for scenario_key in scenarios.keys():
-        for lon in lons:
-            print("Running {} scenario at {} observer longitude".format(scenario_key, lon))
-            calibration_osse(lon, scenario_key)            
-            
+    
+    ###############
+    # SLOW NARROW
+    # Set seed
+    np.random.seed(19079502)
+    #Generate processes equal to the number of cores
+    params = itertools.product(['slow_narrow'], lons)
+    paramlist = list(params)
+    with multiprocessing.Pool(processes=8) as pool:
+        res = pool.map(calibration_osse, paramlist)
