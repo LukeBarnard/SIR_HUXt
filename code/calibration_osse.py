@@ -22,6 +22,10 @@ def calibration_osse(params):
     observations.
     Use a uniform solar wind background.
     """ 
+    
+    # Set the seed, so all experiments start the same.
+    np.random.seed(19079502)
+    
     scenario = params[0]
     observer_lon = params[1]
     
@@ -89,8 +93,6 @@ if __name__ == "__main__":
     
     ###############
     # SLOW NARROW
-    # Set seed
-    np.random.seed(19079502)
     #Generate processes equal to the number of cores
     params = itertools.product(['slow_narrow'], lons)
     paramlist = list(params)
