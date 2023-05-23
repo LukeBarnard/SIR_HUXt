@@ -12,5 +12,5 @@ This project is written in Python 3.7.3
 Please contact [Luke Barnard](https://github.com/lukebarnard). 
 
 ## Citation
-Not yet. 
+Accepted for publication in Space Weather.
 
