@@ -146,7 +146,7 @@ def plot_huxt_with_observer(model, time, observer_list, fighandle=np.NaN, axhand
 
     mymap.set_over('lightgrey')
     mymap.set_under([0, 0, 0])
-    levels = np.arange(200, 800 + 10, 10)
+    levels = np.arange(300, 600 + 10, 10)
     
     
     if isinstance(fighandle, float):
@@ -170,12 +170,12 @@ def plot_huxt_with_observer(model, time, observer_list, fighandle=np.NaN, axhand
             ax.plot(cme_lons, cme_r, '-', color=cme_colors[cid], linewidth=3, zorder=3)
             
     ert = model.get_observer('EARTH')
-    ax.plot(ert.lon[id_t], ert.r[id_t], 'co', markersize=16, label='Earth')            
+    ax.plot(ert.lon[id_t], ert.r[id_t], 'wo', markersize=16, label='Earth')            
     
     col = 'tab:red'
     for k, observer in enumerate(observer_list):
         # Add on the observer
-        ax.plot(observer.lon[id_t], observer.r[id_t], 's', color=col, markersize=16, label='Observer {:01d}'.format(k))
+        ax.plot(observer.lon[id_t], observer.r[id_t], 's', color=col, markersize=14, label='Observer {:01d}'.format(k))
 
         if add_flank:
             flank_lon = observer.model_flank.loc[id_t, 'lon']
@@ -262,7 +262,7 @@ def get_fov_patch(ro, lo, el_min, el_max, col):
         lf = np.arctan2(yf, xf)
         fov_patch.append([lf.value, rf.value])
 
-    fov_patch = mpl.patches.Polygon(np.array(fov_patch), color=col, alpha=0.3, zorder=1)
+    fov_patch = mpl.patches.Polygon(np.array(fov_patch), edgecolor=col, facecolor=None, fill=False, linestyle=":", linewidth=3, zorder=1)
     return fov_patch
 
 
